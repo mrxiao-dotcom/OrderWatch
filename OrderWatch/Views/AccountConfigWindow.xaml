@@ -1,0 +1,43 @@
+<Window x:Class="OrderWatch.Views.AccountConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="账户配置" Height="400" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="账户名称:" Margin="0,0,10,5" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="AccountNameTextBox" Text="{Binding AccountInfo.Name}" Margin="0,0,0,5"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="API Key:" Margin="0,0,10,5" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="ApiKeyTextBox" Text="{Binding AccountInfo.ApiKey}" Margin="0,0,0,5"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" Margin="0,0,10,5" VerticalAlignment="Center"/>
+        <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="SecretKeyPasswordBox" Margin="0,0,0,5"/>
+
+        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsTestNetCheckBox" Content="使用测试网" IsChecked="{Binding AccountInfo.IsTestNet}" Margin="0,0,0,5"/>
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="风险倍数:" Margin="0,0,10,5" VerticalAlignment="Center"/>
+        <TextBox Grid.Row="4" Grid.Column="1" x:Name="RiskCapitalTimesTextBox" Text="{Binding AccountInfo.RiskCapitalTimes}" Margin="0,0,0,5"/>
+
+        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="保存" Click="SaveButton_Click" Width="80" Margin="0,0,10,0"/>
+            <Button Content="取消" IsCancel="True" Click="CancelButton_Click" Width="80"/>
+        </StackPanel>
+    </Grid>
+</Window>

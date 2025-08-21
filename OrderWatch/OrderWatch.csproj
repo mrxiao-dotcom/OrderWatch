@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyTitle>OrderWatch - 币安期货下单系统</AssemblyTitle>
+    <AssemblyDescription>基于WPF的币安期货交易下单系统</AssemblyDescription>
+    <AssemblyCompany>OrderWatch</AssemblyCompany>
+    <AssemblyProduct>OrderWatch</AssemblyProduct>
+    <AssemblyCopyright>Copyright © 2024</AssemblyCopyright>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Binance.Net" Version="4.0.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="version.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- 编译前自动递增版本号 -->
+  <Target Name="IncrementVersionNumber" BeforeTargets="BeforeBuild">
+    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -File &quot;$(ProjectDir)Scripts\IncrementVersion.ps1&quot; -ProjectDir &quot;$(ProjectDir)&quot;" 
+          ContinueOnError="true" 
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true" />
+  </Target>
+
+</Project>

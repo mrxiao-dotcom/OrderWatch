@@ -1,0 +1,61 @@
+<Window x:Class="OrderWatch.Views.AccountConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="账户配置" Height="400" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 配置表单 -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="账户配置" FontSize="18" FontWeight="Bold" Margin="0,0,0,20"/>
+            
+            <Grid Margin="0,0,0,15">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="账户名称:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Name}" Margin="10,5,0,5"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="API Key:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ApiKey}" Margin="10,5,0,5"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center"/>
+                <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="SecretKeyBox" Margin="10,5,0,5"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="测试网:" VerticalAlignment="Center"/>
+                <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding IsTestNet}" Margin="10,5,0,5" VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="风险倍数:" VerticalAlignment="Center"/>
+                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding RiskCapitalTimes}" Margin="10,5,0,5"/>
+            </Grid>
+
+            <TextBlock Text="说明:" FontWeight="Bold" Margin="0,0,0,5"/>
+            <TextBlock Text="• 账户名称: 用于标识不同的账户配置" Foreground="Gray" Margin="0,0,0,2"/>
+            <TextBlock Text="• API Key: 从币安获取的API密钥" Foreground="Gray" Margin="0,0,0,2"/>
+            <TextBlock Text="• Secret Key: 从币安获取的密钥" Foreground="Gray" Margin="0,0,0,2"/>
+            <TextBlock Text="• 测试网: 勾选后使用测试网络" Foreground="Gray" Margin="0,0,0,2"/>
+            <TextBlock Text="• 风险倍数: 可用余额的倍数，用于计算风险资金" Foreground="Gray" Margin="0,0,0,2"/>
+        </StackPanel>
+
+        <!-- 按钮区域 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="保存" Width="80" Height="30" Margin="0,0,10,0" Click="SaveButton_Click"/>
+            <Button Content="取消" Width="80" Height="30" Click="CancelButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
