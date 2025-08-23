@@ -321,13 +321,168 @@ public class BinanceService : IBinanceService, IDisposable
         {
             // 临时实现：模拟设置保证金类型成功
             await Task.Delay(100);
-            // Console.WriteLine($"设置保证金类型成功: {symbol} {marginType}");
+            // Console.WriteLine($"设置保证金类型成功: {symbol} {leverage}");
             return true;
         }
         catch (Exception)
         {
             // Console.WriteLine($"设置保证金类型异常");
             return false;
+        }
+    }
+
+    public async Task<AccountInfo?> GetDetailedAccountInfoAsync()
+    {
+        try
+        {
+            // 临时实现：返回详细的模拟数据
+            await Task.Delay(100);
+            var account = new AccountInfo
+            {
+                TotalWalletBalance = 10000m,
+                TotalUnrealizedProfit = 500m,
+                TotalMarginBalance = 10500m,
+                TotalInitialMargin = 2000m,
+                TotalMaintMargin = 100m,
+                TotalPositionInitialMargin = 1500m,
+                TotalOpenOrderInitialMargin = 500m,
+                TotalCrossWalletBalance = 10500m,
+                TotalCrossUnPnl = 500m,
+                MaxWithdrawAmount = 8000m,
+                LongMarketValue = 8000m,
+                ShortMarketValue = 2000m,
+                TotalMarketValue = 10000m,
+                NetMarketValue = 6000m,
+                Leverage = 2.0m
+            };
+            
+            Console.WriteLine("获取详细账户信息成功");
+            return account;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取详细账户信息失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<List<PositionInfo>> GetDetailedPositionsAsync()
+    {
+        try
+        {
+            // 临时实现：返回详细的模拟数据
+            await Task.Delay(100);
+            var positions = new List<PositionInfo>
+            {
+                new()
+                {
+                    Symbol = "BTCUSDT",
+                    PositionSide = "LONG",
+                    PositionAmt = 0.1m,
+                    EntryPrice = 50000m,
+                    MarkPrice = 51000m,
+                    UnRealizedProfit = 100m,
+                    LiquidationPrice = 45000m,
+                    Leverage = 10,
+                    Notional = 5100m,
+                    OrderCount = 2,
+                    ConditionalOrderCount = 1
+                },
+                new()
+                {
+                    Symbol = "ETHUSDT",
+                    PositionSide = "SHORT",
+                    PositionAmt = -0.5m,
+                    EntryPrice = 3000m,
+                    MarkPrice = 2900m,
+                    UnRealizedProfit = 50m,
+                    LiquidationPrice = 3500m,
+                    Leverage = 5,
+                    Notional = 1450m,
+                    OrderCount = 1,
+                    ConditionalOrderCount = 0
+                }
+            };
+            
+            Console.WriteLine($"获取详细持仓信息成功，共 {positions.Count} 个持仓");
+            return positions;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取详细持仓信息失败: {ex.Message}");
+            return new List<PositionInfo>();
+        }
+    }
+
+    public async Task<SymbolInfo?> GetSymbolInfoAsync(string symbol)
+    {
+        try
+        {
+            // 临时实现：返回模拟的合约信息
+            await Task.Delay(100);
+            
+            if (string.IsNullOrEmpty(symbol))
+                return null;
+                
+            var upperSymbol = symbol.ToUpper();
+            
+            // 根据合约名称返回相应的精度信息
+            var symbolInfo = new SymbolInfo
+            {
+                Symbol = symbol,
+                LatestPrice = await GetLatestPriceAsync(symbol),
+                PriceChangePercent = await Get24hrPriceChangeAsync(symbol),
+                LastUpdateTime = DateTime.Now
+            };
+            
+            // 设置缓存过期时间为明天
+            symbolInfo.SetCacheExpiryToTomorrow();
+            
+            // 根据合约类型设置精度信息
+            if (upperSymbol.Contains("BTC") || upperSymbol.Contains("ETH") || upperSymbol.Contains("BNB"))
+            {
+                symbolInfo.PricePrecision = 2;      // 价格精度：0.01
+                symbolInfo.QuantityPrecision = 3;   // 数量精度：0.001
+                symbolInfo.MinQuantity = 0.001m;    // 最小数量：0.001
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            else if (upperSymbol.Contains("USDT") || upperSymbol.Contains("BUSD"))
+            {
+                symbolInfo.PricePrecision = 4;      // 价格精度：0.0001
+                symbolInfo.QuantityPrecision = 1;   // 数量精度：0.1
+                symbolInfo.MinQuantity = 0.1m;      // 最小数量：0.1
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            else if (upperSymbol.Contains("DOGE") || upperSymbol.Contains("SHIB"))
+            {
+                symbolInfo.PricePrecision = 6;      // 价格精度：0.000001
+                symbolInfo.QuantityPrecision = 0;   // 数量精度：1 (整数)
+                symbolInfo.MinQuantity = 1m;        // 最小数量：1
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            else if (upperSymbol.Contains("ADA") || upperSymbol.Contains("DOT") || upperSymbol.Contains("LINK"))
+            {
+                symbolInfo.PricePrecision = 4;      // 价格精度：0.0001
+                symbolInfo.QuantityPrecision = 2;   // 数量精度：0.01
+                symbolInfo.MinQuantity = 0.01m;     // 最小数量：0.01
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            else
+            {
+                // 默认精度设置
+                symbolInfo.PricePrecision = 4;      // 价格精度：0.0001
+                symbolInfo.QuantityPrecision = 1;   // 数量精度：0.1
+                symbolInfo.MinQuantity = 0.1m;      // 最小数量：0.1
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            
+            Console.WriteLine($"获取合约信息成功: {symbol} (价格精度: {symbolInfo.PricePrecision}, 数量精度: {symbolInfo.QuantityPrecision})");
+            return symbolInfo;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取合约信息失败: {symbol} - {ex.Message}");
+            return null;
         }
     }
 

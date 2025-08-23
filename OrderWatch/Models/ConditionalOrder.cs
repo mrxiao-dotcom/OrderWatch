@@ -17,6 +17,12 @@ public class ConditionalOrder : INotifyPropertyChanged
     private DateTime? _executeTime;
     private string _orderId = string.Empty;
     private string _remark = string.Empty;
+    
+    // 新增属性
+    private string _orderType = string.Empty;
+    private decimal _price;
+    private decimal _leverage;
+    private DateTime _createdTime;
 
     public long Id
     {
@@ -190,6 +196,59 @@ public class ConditionalOrder : INotifyPropertyChanged
             {
                 _remark = value;
                 OnPropertyChanged(nameof(Remark));
+            }
+        }
+    }
+
+    // 新增属性
+    public string OrderType
+    {
+        get => _orderType;
+        set
+        {
+            if (_orderType != value)
+            {
+                _orderType = value;
+                OnPropertyChanged(nameof(OrderType));
+            }
+        }
+    }
+
+    public decimal Price
+    {
+        get => _price;
+        set
+        {
+            if (_price != value)
+            {
+                _price = value;
+                OnPropertyChanged(nameof(Price));
+            }
+        }
+    }
+
+    public decimal Leverage
+    {
+        get => _leverage;
+        set
+        {
+            if (_leverage != value)
+            {
+                _leverage = value;
+                OnPropertyChanged(nameof(Leverage));
+            }
+        }
+    }
+
+    public DateTime CreatedTime
+    {
+        get => _createdTime;
+        set
+        {
+            if (_createdTime != value)
+            {
+                _createdTime = value;
+                OnPropertyChanged(nameof(CreatedTime));
             }
         }
     }

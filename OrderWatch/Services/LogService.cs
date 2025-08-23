@@ -66,7 +66,13 @@ public class LogService : ILogService
         {
             if (File.Exists(_logFilePath))
             {
-                var lines = await File.ReadAllLinesAsync(_logFilePath);
+                string[] lines;
+                using (var fileStream = new FileStream(_logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(fileStream))
+                {
+                    var content = await reader.ReadToEndAsync();
+                    lines = content.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                }
                 var count = 0;
                 
                 foreach (var line in lines.Reverse()) // 从最新的开始
@@ -177,10 +183,17 @@ public class LogService : ILogService
         
         try
         {
-            lock (_lockObject)
+            await Task.Run(() =>
             {
-                File.AppendAllText(_logFilePath, jsonLine);
-            }
+                lock (_lockObject)
+                {
+                    // 使用 FileStream 以共享方式写入，避免文件锁定
+                    using var fileStream = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    using var writer = new StreamWriter(fileStream);
+                    writer.Write(jsonLine);
+                    writer.Flush();
+                }
+            });
             
             // 同时输出到控制台
             Console.WriteLine($"[{logEntry.FormattedTimestamp}] {logEntry.FormattedMessage}");
@@ -203,7 +216,11 @@ public class LogService : ILogService
             {
                 lock (_lockObject)
                 {
-                    File.AppendAllText(_tradeLogFilePath, jsonLine);
+                    // 使用 FileStream 以共享方式写入，避免文件锁定
+                    using var fileStream = new FileStream(_tradeLogFilePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    using var writer = new StreamWriter(fileStream);
+                    writer.Write(jsonLine);
+                    writer.Flush();
                 }
             });
         }

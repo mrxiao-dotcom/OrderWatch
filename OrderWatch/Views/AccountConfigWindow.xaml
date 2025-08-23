@@ -32,7 +32,7 @@
 
         <CheckBox Grid.Row="3" Grid.Column="1" x:Name="IsTestNetCheckBox" Content="使用测试网" IsChecked="{Binding AccountInfo.IsTestNet}" Margin="0,0,0,5"/>
 
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="风险倍数:" Margin="0,0,10,5" VerticalAlignment="Center"/>
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="风险次数:" Margin="0,0,10,5" VerticalAlignment="Center"/>
         <TextBox Grid.Row="4" Grid.Column="1" x:Name="RiskCapitalTimesTextBox" Text="{Binding AccountInfo.RiskCapitalTimes}" Margin="0,0,0,5"/>
 
         <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">

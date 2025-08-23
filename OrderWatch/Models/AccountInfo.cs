@@ -19,6 +19,11 @@ public class AccountInfo : INotifyPropertyChanged
     private decimal _totalCrossWalletBalance;
     private decimal _totalCrossUnPnl;
     private decimal _maxWithdrawAmount;
+    private decimal _longMarketValue;
+    private decimal _shortMarketValue;
+    private decimal _totalMarketValue;
+    private decimal _netMarketValue;
+    private decimal _leverage;
 
     public string Name
     {
@@ -216,6 +221,78 @@ public class AccountInfo : INotifyPropertyChanged
             {
                 _maxWithdrawAmount = value;
                 OnPropertyChanged(nameof(MaxWithdrawAmount));
+            }
+        }
+    }
+
+    public decimal LongMarketValue
+    {
+        get => _longMarketValue;
+        set
+        {
+            if (_longMarketValue != value)
+            {
+                _longMarketValue = value;
+                OnPropertyChanged(nameof(LongMarketValue));
+                OnPropertyChanged(nameof(TotalMarketValue));
+                OnPropertyChanged(nameof(NetMarketValue));
+                OnPropertyChanged(nameof(Leverage));
+            }
+        }
+    }
+
+    public decimal ShortMarketValue
+    {
+        get => _shortMarketValue;
+        set
+        {
+            if (_shortMarketValue != value)
+            {
+                _shortMarketValue = value;
+                OnPropertyChanged(nameof(ShortMarketValue));
+                OnPropertyChanged(nameof(TotalMarketValue));
+                OnPropertyChanged(nameof(NetMarketValue));
+                OnPropertyChanged(nameof(Leverage));
+            }
+        }
+    }
+
+    public decimal TotalMarketValue
+    {
+        get => _totalMarketValue;
+        set
+        {
+            if (_totalMarketValue != value)
+            {
+                _totalMarketValue = value;
+                OnPropertyChanged(nameof(TotalMarketValue));
+                OnPropertyChanged(nameof(Leverage));
+            }
+        }
+    }
+
+    public decimal NetMarketValue
+    {
+        get => _netMarketValue;
+        set
+        {
+            if (_netMarketValue != value)
+            {
+                _netMarketValue = value;
+                OnPropertyChanged(nameof(NetMarketValue));
+            }
+        }
+    }
+
+    public decimal Leverage
+    {
+        get => _leverage;
+        set
+        {
+            if (_leverage != value)
+            {
+                _leverage = value;
+                OnPropertyChanged(nameof(Leverage));
             }
         }
     }

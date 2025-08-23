@@ -13,6 +13,8 @@ public class PositionInfo : INotifyPropertyChanged
     private decimal _liquidationPrice;
     private decimal _leverage;
     private decimal _notional;
+    private int _orderCount;
+    private int _conditionalOrderCount;
 
     public string Symbol
     {
@@ -136,6 +138,32 @@ public class PositionInfo : INotifyPropertyChanged
                 _notional = value;
                 OnPropertyChanged(nameof(Notional));
                 OnPropertyChanged(nameof(UnRealizedProfitPercent));
+            }
+        }
+    }
+
+    public int OrderCount
+    {
+        get => _orderCount;
+        set
+        {
+            if (_orderCount != value)
+            {
+                _orderCount = value;
+                OnPropertyChanged(nameof(OrderCount));
+            }
+        }
+    }
+
+    public int ConditionalOrderCount
+    {
+        get => _conditionalOrderCount;
+        set
+        {
+            if (_conditionalOrderCount != value)
+            {
+                _conditionalOrderCount = value;
+                OnPropertyChanged(nameof(ConditionalOrderCount));
             }
         }
     }

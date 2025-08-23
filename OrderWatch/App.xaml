@@ -1,7 +1,8 @@
 ﻿<Application x:Class="OrderWatch.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:OrderWatch">
+             xmlns:local="clr-namespace:OrderWatch"
+             StartupUri="TestWindow.xaml">
     <Application.Resources>
          
     </Application.Resources>

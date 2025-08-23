@@ -1,29 +1,47 @@
-﻿using OrderWatch.Services;
-using OrderWatch.ViewModels;
-using OrderWatch.Views;
+﻿using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
 using System.Windows;
 
 namespace OrderWatch;
 
 public partial class App : Application
 {
+
     protected override void OnStartup(StartupEventArgs e)
     {
-                        // 创建服务实例
-                var binanceService = new BinanceService();
-                var configService = new ConfigService();
-                var conditionalOrderService = new ConditionalOrderService(binanceService);
-                var symbolInfoService = new SymbolInfoService(binanceService);
-                
-                // 创建主视图模型
-                var mainViewModel = new MainViewModel(binanceService, configService, conditionalOrderService, symbolInfoService);
-        
-        // 创建并显示主窗口
-        var mainWindow = new MainWindow();
-        mainWindow.DataContext = mainViewModel;
-        mainWindow.Show();
-
+        Console.WriteLine("=== 使用简化启动逻辑 ===");
         base.OnStartup(e);
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Console.WriteLine("=== 应用程序正在退出 ===");
+        
+        try
+        {
+            // 等待一小段时间确保所有资源释放
+            Thread.Sleep(1000);
+            
+            // 强制垃圾回收
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            
+            Console.WriteLine("=== 应用程序退出完成 ===");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"应用程序退出异常: {ex.Message}");
+        }
+        finally
+        {
+            base.OnExit(e);
+            
+            // 如果正常退出失败，强制终止进程
+            Environment.Exit(0);
+        }
     }
 }
 

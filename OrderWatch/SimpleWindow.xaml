@@ -1,0 +1,24 @@
+<Window x:Class="OrderWatch.SimpleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="简单测试窗口" Height="400" Width="600"
+        WindowStartupLocation="CenterScreen">
+    <Grid Background="LightBlue">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="测试窗口显示成功！" 
+                       FontSize="24" 
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center" 
+                       Margin="20"/>
+            <TextBlock Text="如果您看到这个窗口，说明WPF基本功能正常" 
+                       FontSize="16" 
+                       HorizontalAlignment="Center" 
+                       Margin="20"/>
+            <Button Content="点击测试" 
+                    Width="120" 
+                    Height="40" 
+                    Margin="20"
+                    Click="TestButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
