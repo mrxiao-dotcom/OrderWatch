@@ -23,6 +23,7 @@ public class ConditionalOrder : INotifyPropertyChanged
     private decimal _price;
     private decimal _leverage;
     private DateTime _createdTime;
+    private bool _reduceOnly;
 
     public long Id
     {
@@ -286,6 +287,22 @@ public class ConditionalOrder : INotifyPropertyChanged
     public string CreateTimeDisplay => CreateTime.ToString("yyyy-MM-dd HH:mm:ss");
     public string TriggerTimeDisplay => TriggerTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
     public string ExecuteTimeDisplay => ExecuteTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+
+    public bool ReduceOnly
+    {
+        get => _reduceOnly;
+        set
+        {
+            if (_reduceOnly != value)
+            {
+                _reduceOnly = value;
+                OnPropertyChanged(nameof(ReduceOnly));
+                OnPropertyChanged(nameof(ReduceOnlyDisplay));
+            }
+        }
+    }
+
+    public string ReduceOnlyDisplay => ReduceOnly ? "✓" : "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

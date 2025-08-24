@@ -13,6 +13,9 @@ public class OrderInfo : INotifyPropertyChanged
     private decimal _executedQty;
     private string _status = string.Empty;
     private long _updateTime;
+    private decimal _origQty;
+    private bool _reduceOnly;
+    private decimal _stopPrice;
 
     public long OrderId
     {
@@ -167,8 +170,51 @@ public class OrderInfo : INotifyPropertyChanged
     };
 
     public bool IsActive => Status is "NEW" or "PARTIALLY_FILLED";
-    public decimal RemainingQty => Quantity - ExecutedQty;
+    public decimal RemainingQty => OrigQty - ExecutedQty;
     public string UpdateTimeDisplay => DateTimeOffset.FromUnixTimeMilliseconds(UpdateTime).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+
+    public decimal OrigQty
+    {
+        get => _origQty;
+        set
+        {
+            if (_origQty != value)
+            {
+                _origQty = value;
+                OnPropertyChanged(nameof(OrigQty));
+                OnPropertyChanged(nameof(RemainingQty));
+            }
+        }
+    }
+
+    public bool ReduceOnly
+    {
+        get => _reduceOnly;
+        set
+        {
+            if (_reduceOnly != value)
+            {
+                _reduceOnly = value;
+                OnPropertyChanged(nameof(ReduceOnly));
+                OnPropertyChanged(nameof(ReduceOnlyDisplay));
+            }
+        }
+    }
+
+    public decimal StopPrice
+    {
+        get => _stopPrice;
+        set
+        {
+            if (_stopPrice != value)
+            {
+                _stopPrice = value;
+                OnPropertyChanged(nameof(StopPrice));
+            }
+        }
+    }
+
+    public string ReduceOnlyDisplay => ReduceOnly ? "✓" : "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

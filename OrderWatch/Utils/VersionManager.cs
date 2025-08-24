@@ -94,7 +94,7 @@ public static class VersionManager
     public static string GetFormattedVersion()
     {
         var version = GetCurrentVersion();
-        return $"OrderWatch - 币安期货下单系统 版本 V {version}";
+        return $"币安合约交易系统 V{version}";
     }
 
     /// <summary>

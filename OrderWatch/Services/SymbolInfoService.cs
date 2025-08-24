@@ -21,8 +21,7 @@ public class SymbolInfoService : ISymbolInfoService
         _cacheFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "symbol_cache.json");
         _symbolCache = new ConcurrentDictionary<string, SymbolInfo>();
         
-        // 加载缓存的合约信息
-        _ = Task.Run(LoadCachedSymbolsAsync);
+        // 不在构造函数中加载缓存，由外部调用LoadCachedSymbolsAsync
     }
 
     /// <summary>
@@ -33,9 +32,13 @@ public class SymbolInfoService : ISymbolInfoService
         if (string.IsNullOrEmpty(symbol)) return null;
 
         // 检查缓存
-        if (_symbolCache.TryGetValue(symbol, out var cachedInfo) && !cachedInfo.IsCacheExpired)
+        if (_symbolCache.TryGetValue(symbol, out var cachedInfo))
         {
-            return cachedInfo;
+            // 检查缓存是否过期（24小时）
+            if (DateTime.Now - cachedInfo.LastUpdate < TimeSpan.FromHours(24))
+            {
+                return cachedInfo;
+            }
         }
 
         // 缓存过期或不存在，从API获取
@@ -64,17 +67,24 @@ public class SymbolInfoService : ISymbolInfoService
             // 获取24小时价格变化
             var priceChangePercent = await _binanceService.Get24hrPriceChangeAsync(symbol);
 
-            // 创建合约信息对象
+            // 创建合约信息对象（使用新的SymbolInfo模型）
             var symbolInfo = new SymbolInfo
             {
                 Symbol = symbol,
-                LatestPrice = latestPrice,
-                PriceChangePercent = priceChangePercent,
-                LastUpdateTime = DateTime.Now
+                Status = "TRADING",
+                BaseAsset = symbol.Replace("USDT", "").Replace("BUSD", ""),
+                QuoteAsset = symbol.Contains("USDT") ? "USDT" : "BUSD",
+                PricePrecision = 4,     // 默认精度，实际应从API获取
+                QuantityPrecision = 4,
+                MinQty = 0.001m,
+                MaxQty = 100000m,
+                StepSize = 0.001m,
+                MinPrice = 0.01m,
+                MaxPrice = 1000000m,
+                TickSize = 0.01m,
+                MinNotional = 5m,
+                LastUpdate = DateTime.Now
             };
-
-            // 设置缓存过期时间为明天
-            symbolInfo.SetCacheExpiryToTomorrow();
 
             // 更新缓存
             _symbolCache.AddOrUpdate(symbol, symbolInfo, (key, oldValue) => symbolInfo);
@@ -109,7 +119,7 @@ public class SymbolInfoService : ISymbolInfoService
     public async Task ClearExpiredCacheAsync()
     {
         var expiredSymbols = _symbolCache.Values
-            .Where(info => info.IsCacheExpired)
+            .Where(info => DateTime.Now - info.LastUpdate > TimeSpan.FromHours(24))
             .Select(info => info.Symbol)
             .ToList();
 
@@ -127,7 +137,7 @@ public class SymbolInfoService : ISymbolInfoService
     /// <summary>
     /// 加载缓存的合约信息
     /// </summary>
-    private async Task LoadCachedSymbolsAsync()
+    public async Task LoadCachedSymbolsAsync()
     {
         try
         {
@@ -140,8 +150,8 @@ public class SymbolInfoService : ISymbolInfoService
             {
                 foreach (var kvp in cachedSymbols)
                 {
-                    // 只加载未过期的缓存
-                    if (!kvp.Value.IsCacheExpired)
+                    // 只加载未过期的缓存（24小时内）
+                    if (DateTime.Now - kvp.Value.LastUpdate < TimeSpan.FromHours(24))
                     {
                         _symbolCache.TryAdd(kvp.Key, kvp.Value);
                     }

@@ -26,4 +26,9 @@ public interface ISymbolInfoService
     /// 清除过期的缓存
     /// </summary>
     Task ClearExpiredCacheAsync();
+    
+    /// <summary>
+    /// 加载缓存的合约信息
+    /// </summary>
+    Task LoadCachedSymbolsAsync();
 }

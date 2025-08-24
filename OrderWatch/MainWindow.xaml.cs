@@ -73,12 +73,15 @@ public partial class MainWindow : Window
             
             Console.WriteLine("所有服务创建完成");
             
-            // 创建ViewModel
-            Console.WriteLine("创建 MainViewModel...");
-            var viewModel = new MainViewModel(binanceService, configService, conditionalOrderService, symbolInfoService, binanceSymbolService);
+            // 创建TestViewModel（包含完善的限价单、做多/做空条件单功能）
+            Console.WriteLine("创建 TestViewModel...");
+            var testViewModel = new TestViewModel();
             
             Console.WriteLine("设置 DataContext...");
-            this.DataContext = viewModel;
+            this.DataContext = testViewModel;
+            
+            // 设置窗口标题为版本信息
+            this.Title = testViewModel.WindowTitle;
             
             Console.WriteLine("=== 服务和ViewModel加载完成 ===");
         }
@@ -127,13 +130,18 @@ public partial class MainWindow : Window
     /// </summary>
     private async void CandidateSymbolsDataGrid_MouseDoubleClick(object? sender, MouseButtonEventArgs e)
     {
-        if (DataContext is MainViewModel viewModel)
+        var dataGrid = sender as DataGrid;
+        if (dataGrid?.SelectedItem is CandidateSymbol selectedSymbol)
         {
-            var dataGrid = sender as DataGrid;
-            if (dataGrid?.SelectedItem is CandidateSymbol selectedSymbol)
+            if (DataContext is MainViewModel mainViewModel)
             {
                 // 自动填写合约名称到所有下单区，并获取合约信息
-                await viewModel.AutoFillSymbolToOrderAreasAsync(selectedSymbol.Symbol);
+                await mainViewModel.AutoFillSymbolToOrderAreasAsync(selectedSymbol.Symbol);
+            }
+            else if (DataContext is ViewModels.TestViewModel testViewModel)
+            {
+                // TestViewModel的自动填充功能
+                await testViewModel.AutoFillSymbolToOrderAreasAsync(selectedSymbol.Symbol);
             }
         }
     }
@@ -187,14 +195,164 @@ public partial class MainWindow : Window
     /// </summary>
     private async void PositionsDataGrid_MouseDoubleClick(object? sender, MouseButtonEventArgs e)
     {
-        if (DataContext is MainViewModel viewModel)
+        var dataGrid = sender as DataGrid;
+        if (dataGrid?.SelectedItem is PositionInfo selectedPosition)
         {
-            var dataGrid = sender as DataGrid;
-            if (dataGrid?.SelectedItem is PositionInfo selectedPosition)
+            if (DataContext is MainViewModel mainViewModel)
             {
                 // 自动填写持仓信息到下单区
-                await viewModel.AutoFillPositionToOrderAreasAsync(selectedPosition);
+                await mainViewModel.AutoFillPositionToOrderAreasAsync(selectedPosition);
+            }
+            else if (DataContext is ViewModels.TestViewModel testViewModel)
+            {
+                // TestViewModel的自动填充功能
+                await testViewModel.AutoFillPositionToOrderAreasAsync(selectedPosition);
             }
         }
     }
+
+    #region 合约输入自动完成事件处理
+
+    /// <summary>
+    /// 合约输入框文本变化事件
+    /// </summary>
+    private async void SymbolInputBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (DataContext is ViewModels.TestViewModel testViewModel && sender is TextBox textBox)
+        {
+            var input = textBox.Text?.Trim();
+            if (!string.IsNullOrEmpty(input))
+            {
+                // 获取合约建议
+                var suggestions = await testViewModel.GetSymbolSuggestionsAsync(input);
+                testViewModel.SymbolSuggestions.Clear();
+                foreach (var suggestion in suggestions)
+                {
+                    testViewModel.SymbolSuggestions.Add(suggestion);
+                }
+                
+                // 显示建议列表
+                SymbolSuggestionsPopup.IsOpen = testViewModel.SymbolSuggestions.Count > 0;
+            }
+            else
+            {
+                SymbolSuggestionsPopup.IsOpen = false;
+                testViewModel.SymbolSuggestions.Clear();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 合约输入框按键事件
+    /// </summary>
+    private void SymbolInputBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Down)
+        {
+            if (SymbolSuggestionsPopup.IsOpen && SymbolSuggestionsList.Items.Count > 0)
+            {
+                e.Handled = true;
+                SymbolSuggestionsList.SelectedIndex = 0;
+                SymbolSuggestionsList.Focus();
+                SymbolSuggestionsList.ScrollIntoView(SymbolSuggestionsList.SelectedItem);
+            }
+        }
+        else if (e.Key == Key.Up)
+        {
+            if (SymbolSuggestionsPopup.IsOpen && SymbolSuggestionsList.Items.Count > 0)
+            {
+                e.Handled = true;
+                SymbolSuggestionsList.SelectedIndex = SymbolSuggestionsList.Items.Count - 1;
+                SymbolSuggestionsList.Focus();
+                SymbolSuggestionsList.ScrollIntoView(SymbolSuggestionsList.SelectedItem);
+            }
+        }
+        else if (e.Key == Key.Enter)
+        {
+            if (SymbolSuggestionsPopup.IsOpen && SymbolSuggestionsList.Items.Count > 0)
+            {
+                // 选择第一个建议
+                SelectSuggestion(0);
+                e.Handled = true;
+            }
+            else if (DataContext is ViewModels.TestViewModel testViewModel)
+            {
+                // 直接添加输入的合约
+                testViewModel.AddSymbolFromInputCommand.Execute(null);
+                e.Handled = true;
+            }
+        }
+        else if (e.Key == Key.Escape)
+        {
+            SymbolSuggestionsPopup.IsOpen = false;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// 合约输入框失去焦点事件
+    /// </summary>
+    private async void SymbolInputBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // 基本的失去焦点处理
+        await Task.Delay(100);
+    }
+
+    /// <summary>
+    /// 建议列表按键事件
+    /// </summary>
+    private void SymbolSuggestionsList_KeyDown(object sender, KeyEventArgs e)
+    {
+        // 基本的键盘处理
+        if (e.Key == Key.Enter || e.Key == Key.Escape)
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// 建议列表双击事件
+    /// </summary>
+    private void SymbolSuggestionsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // 基本的双击处理
+    }
+
+    /// <summary>
+    /// 建议列表选择变化事件
+    /// </summary>
+    private void SymbolSuggestionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 基本的选择变化处理
+    }
+
+    /// <summary>
+    /// 选择建议项
+    /// </summary>
+    private void SelectSuggestion(int index)
+    {
+        if (DataContext is ViewModels.TestViewModel testViewModel && 
+            index >= 0 && index < testViewModel.SymbolSuggestions.Count)
+        {
+            var selectedSymbol = testViewModel.SymbolSuggestions[index];
+            testViewModel.NewSymbolInput = selectedSymbol;
+            SymbolSuggestionsPopup.IsOpen = false;
+            
+            // 执行添加命令
+            testViewModel.AddSymbolFromInputCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
+    /// 执行添加合约命令
+    /// </summary>
+    private void ExecuteAddSymbolCommand()
+    {
+        if (DataContext is ViewModels.TestViewModel testViewModel)
+        {
+            testViewModel.AddSymbolFromInputCommand.Execute(null);
+        }
+    }
+
+    #endregion
 }

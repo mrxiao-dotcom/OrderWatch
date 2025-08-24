@@ -21,12 +21,10 @@ public partial class App : Application
         
         try
         {
-            // 等待一小段时间确保所有资源释放
-            Thread.Sleep(1000);
+            // 给定时器和异步操作一些时间完成
+            Thread.Sleep(500);
             
-            // 强制垃圾回收
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+            // 执行垃圾回收（但不强制等待）
             GC.Collect();
             
             Console.WriteLine("=== 应用程序退出完成 ===");
@@ -38,9 +36,7 @@ public partial class App : Application
         finally
         {
             base.OnExit(e);
-            
-            // 如果正常退出失败，强制终止进程
-            Environment.Exit(0);
+            // 移除Environment.Exit(0) - 让应用程序自然退出
         }
     }
 }

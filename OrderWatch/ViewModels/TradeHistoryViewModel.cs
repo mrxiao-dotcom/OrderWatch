@@ -22,8 +22,8 @@ public partial class TradeHistoryViewModel : ObservableObject
         
         TradeHistories = new ObservableCollection<TradeHistory>();
         
-        // 加载初始数据
-        _ = Task.Run(async () => await LoadTradeHistoriesAsync());
+        // 设置初始状态，延迟加载数据
+        StatusMessage = "正在初始化...";
     }
 
     #region 属性

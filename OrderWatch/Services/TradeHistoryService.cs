@@ -23,14 +23,17 @@ public class TradeHistoryService : ITradeHistoryService
             Directory.CreateDirectory(_historyDirectory);
         }
 
-        // 初始化ID
-        _nextId = GetNextIdFromFile();
+        // 延迟初始化ID，避免构造函数中的阻塞操作
+        _nextId = 1;
     }
 
     public async Task<bool> AddTradeHistoryAsync(TradeHistory tradeHistory)
     {
         try
         {
+            // 确保ID正确初始化
+            await EnsureIdInitializedAsync();
+            
             tradeHistory.Id = _nextId++;
             tradeHistory.Timestamp = DateTime.Now;
 
@@ -203,6 +206,29 @@ public class TradeHistoryService : ITradeHistoryService
         }
     }
 
+    private async Task EnsureIdInitializedAsync()
+    {
+        // 如果ID已经被正确初始化（大于1），则无需重新计算
+        if (_nextId > 1)
+            return;
+
+        try
+        {
+            if (!File.Exists(_historyFilePath))
+            {
+                _nextId = 1;
+                return;
+            }
+
+            var histories = await LoadTradeHistoriesAsync().ConfigureAwait(false);
+            _nextId = histories.Count > 0 ? histories.Max(h => h.Id) + 1 : 1;
+        }
+        catch
+        {
+            _nextId = 1;
+        }
+    }
+
     private long GetNextIdFromFile()
     {
         try
@@ -210,7 +236,8 @@ public class TradeHistoryService : ITradeHistoryService
             if (!File.Exists(_historyFilePath))
                 return 1;
 
-            var histories = LoadTradeHistoriesAsync().Result;
+            // 使用 ConfigureAwait(false) 避免死锁
+            var histories = LoadTradeHistoriesAsync().ConfigureAwait(false).GetAwaiter().GetResult();
             return histories.Count > 0 ? histories.Max(h => h.Id) + 1 : 1;
         }
         catch

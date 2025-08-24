@@ -4,12 +4,15 @@ using System.IO;
 
 namespace OrderWatch.Services;
 
-public class ConditionalOrderService : IConditionalOrderService
+public class ConditionalOrderService : IConditionalOrderService, IDisposable
 {
     private readonly IBinanceService _binanceService;
     private readonly string _configPath;
     private readonly List<ConditionalOrder> _conditionalOrders;
     private long _nextId = 1;
+    private Timer? _monitorTimer;
+    private readonly SemaphoreSlim _executionSemaphore = new(1, 1);
+    private bool _disposed = false;
 
     public ConditionalOrderService(IBinanceService binanceService)
     {
@@ -21,6 +24,8 @@ public class ConditionalOrderService : IConditionalOrderService
         
         _conditionalOrders = LoadConditionalOrders();
         _nextId = _conditionalOrders.Count > 0 ? _conditionalOrders.Max(o => o.Id) + 1 : 1;
+        
+        // 不在构造函数中启动定时器，由外部调用StartConditionalOrderMonitor()
     }
 
     public async Task<List<ConditionalOrder>> GetConditionalOrdersAsync()
@@ -301,6 +306,70 @@ public class ConditionalOrderService : IConditionalOrderService
         catch (Exception)
         {
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 启动条件单监控定时器
+    /// </summary>
+    public void StartConditionalOrderMonitor()
+    {
+        if (_disposed) return;
+        
+        // 启动定时器，每10秒检查一次条件单
+        _monitorTimer = new Timer(async _ => await SafeCheckConditionalOrdersAsync(), 
+            null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+        
+        Console.WriteLine("条件单监控器已启动");
+    }
+
+    /// <summary>
+    /// 安全的条件单检查（避免并发执行）
+    /// </summary>
+    private async Task SafeCheckConditionalOrdersAsync()
+    {
+        if (_disposed || !_executionSemaphore.Wait(0))
+        {
+            return; // 如果已释放或上次检查还在进行中，则跳过
+        }
+
+        try
+        {
+            await CheckAndExecuteConditionalOrdersAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"条件单检查异常: {ex.Message}");
+        }
+        finally
+        {
+            _executionSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        
+        _disposed = true;
+        
+        try
+        {
+            // 停止定时器
+            _monitorTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _monitorTimer?.Dispose();
+            
+            // 释放信号量
+            _executionSemaphore?.Dispose();
+            
+            Console.WriteLine("ConditionalOrderService资源已释放");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ConditionalOrderService释放资源异常: {ex.Message}");
         }
     }
 }

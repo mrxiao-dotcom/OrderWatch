@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.IO;
 using System.Text;
+using OrderWatch.Models;
 
 namespace OrderWatch.Services;
 
@@ -19,6 +20,7 @@ public class BinanceSymbolService : IBinanceSymbolService
     private List<string> _cachedSymbols;
     private DateTime _lastCacheUpdate;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(24);
+    private readonly EnhancedSymbolInfoService _enhancedService;
 
     public BinanceSymbolService()
     {
@@ -27,6 +29,7 @@ public class BinanceSymbolService : IBinanceSymbolService
         _cacheFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "symbols_cache.json");
         _cachedSymbols = new List<string>();
         _lastCacheUpdate = DateTime.MinValue;
+        _enhancedService = new EnhancedSymbolInfoService();
     }
 
     /// <summary>
@@ -263,8 +266,41 @@ public class BinanceSymbolService : IBinanceSymbolService
         }
     }
 
+    /// <summary>
+    /// 获取指定合约的详细信息
+    /// </summary>
+    public async Task<SymbolInfo?> GetSymbolInfoAsync(string symbol)
+    {
+        return await _enhancedService.GetSymbolInfoAsync(symbol);
+    }
+
+    /// <summary>
+    /// 获取合约的价格和数量精度信息
+    /// </summary>
+    public async Task<(int pricePrecision, int quantityPrecision, decimal minQty, decimal tickSize)> GetSymbolPrecisionAsync(string symbol)
+    {
+        return await _enhancedService.GetSymbolPrecisionAsync(symbol);
+    }
+
+    /// <summary>
+    /// 调整价格到合约允许的精度
+    /// </summary>
+    public async Task<decimal> AdjustPriceToValidAsync(string symbol, decimal price)
+    {
+        return await _enhancedService.AdjustPriceToValidAsync(symbol, price);
+    }
+
+    /// <summary>
+    /// 调整数量到合约允许的精度
+    /// </summary>
+    public async Task<decimal> AdjustQuantityToValidAsync(string symbol, decimal quantity)
+    {
+        return await _enhancedService.AdjustQuantityToValidAsync(symbol, quantity);
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
+        _enhancedService?.Dispose();
     }
 }
