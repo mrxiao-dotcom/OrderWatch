@@ -24,25 +24,18 @@ public partial class MainWindow : Window
     {
         try
         {
-            Console.WriteLine("=== MainWindow构造函数开始 ===");
             InitializeComponent();
-            Console.WriteLine("InitializeComponent完成");
             
             // 注册窗口关闭事件
             this.Closed += MainWindow_Closed;
-            Console.WriteLine("事件注册完成");
             
             // 延迟创建服务，先显示窗口
             this.Loaded += MainWindow_Loaded;
-            Console.WriteLine("MainWindow构造函数完成 - 延迟加载模式");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"MainWindow构造函数异常: {ex.Message}");
-            Console.WriteLine($"异常堆栈: {ex.StackTrace}");
-            
             // 显示错误信息
-            MessageBox.Show($"主窗口初始化异常: {ex.Message}\n\n详细信息请查看控制台", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"主窗口初始化异常: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -179,14 +172,26 @@ public partial class MainWindow : Window
     /// </summary>
     private async void SymbolSuggestion_MouseLeftButtonDown(object? sender, MouseButtonEventArgs e)
     {
-        if (DataContext is MainViewModel viewModel && sender is TextBlock textBlock)
+        if (sender is TextBlock textBlock)
         {
-            var selectedSymbol = textBlock.Text;
-            viewModel.NewSymbolInput = selectedSymbol;
-            viewModel.SymbolSuggestions.Clear();
-            
-            // 自动添加选中的合约
-            await viewModel.AddSymbolFromInputAsync();
+            if (DataContext is MainViewModel viewModel)
+            {
+                var selectedSymbol = textBlock.Text;
+                viewModel.NewSymbolInput = selectedSymbol;
+                viewModel.SymbolSuggestions.Clear();
+                
+                // 自动添加选中的合约
+                await viewModel.AddSymbolFromInputAsync();
+            }
+            else if (DataContext is ViewModels.TestViewModel testViewModel && textBlock.DataContext is string symbol)
+            {
+                var index = testViewModel.SymbolSuggestions.IndexOf(symbol);
+                if (index >= 0)
+                {
+                    SelectSuggestion(index);
+                    e.Handled = true;
+                }
+            }
         }
     }
 
@@ -303,10 +308,23 @@ public partial class MainWindow : Window
     /// </summary>
     private void SymbolSuggestionsList_KeyDown(object sender, KeyEventArgs e)
     {
-        // 基本的键盘处理
-        if (e.Key == Key.Enter || e.Key == Key.Escape)
+        if (sender is ListBox listBox)
         {
-            e.Handled = true;
+            if (e.Key == Key.Enter)
+            {
+                // 选择当前项
+                if (listBox.SelectedIndex >= 0)
+                {
+                    SelectSuggestion(listBox.SelectedIndex);
+                    e.Handled = true;
+                }
+            }
+            else if (e.Key == Key.Escape)
+            {
+                SymbolSuggestionsPopup.IsOpen = false;
+                SymbolInputBox.Focus();
+                e.Handled = true;
+            }
         }
     }
 
@@ -315,7 +333,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void SymbolSuggestionsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        // 基本的双击处理
+        if (sender is ListBox listBox && listBox.SelectedIndex >= 0)
+        {
+            SelectSuggestion(listBox.SelectedIndex);
+            e.Handled = true;
+        }
     }
 
     /// <summary>
@@ -323,7 +345,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void SymbolSuggestionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 基本的选择变化处理
+        // 可以在这里添加选择变化的处理逻辑
     }
 
     /// <summary>
@@ -342,6 +364,8 @@ public partial class MainWindow : Window
             testViewModel.AddSymbolFromInputCommand.Execute(null);
         }
     }
+
+
 
     /// <summary>
     /// 执行添加合约命令

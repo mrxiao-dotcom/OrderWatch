@@ -16,6 +16,7 @@ public interface IBinanceService
     
     // 交易相关
     Task<bool> PlaceOrderAsync(TradingRequest request);
+    Task<(bool success, long orderId)> PlaceOrderWithIdAsync(TradingRequest request);
     Task<bool> CancelOrderAsync(string symbol, long orderId);
     Task<bool> CancelAllOrdersAsync(string symbol);
     Task<decimal> GetLatestPriceAsync(string symbol);

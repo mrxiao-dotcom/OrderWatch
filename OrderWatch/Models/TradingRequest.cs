@@ -16,4 +16,5 @@ public class TradingRequest
     public decimal? ActivationPrice { get; set; }
     public decimal? CallbackRate { get; set; }
     public string? PriceProtect { get; set; }
+    public int? Leverage { get; set; }
 }

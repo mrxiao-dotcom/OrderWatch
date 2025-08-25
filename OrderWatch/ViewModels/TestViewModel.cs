@@ -188,11 +188,44 @@ public partial class TestViewModel : ObservableObject
     [ObservableProperty]
     private string _newSymbolInput = "";
 
-    [ObservableProperty]
     private decimal _riskAmount = 0;
+    
+    public decimal RiskAmount
+    {
+        get => _riskAmount;
+        set
+        {
+            var roundedValue = Math.Round(value, 0); // 四舍五入为整数
+            if (SetProperty(ref _riskAmount, roundedValue))
+            {
+                // 当RiskAmount改变时，自动重新计算数量
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        // 小延迟确保UI更新完成
+                        await Task.Delay(100);
+                        await RecalculateQuantityWithPrecisionAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"🔴 重新计算数量失败: {ex.Message}");
+                    }
+                });
+                
+                Console.WriteLine($"💰 以损定量更新: {roundedValue} → 将重新计算数量");
+            }
+        }
+    }
 
     [ObservableProperty]
     private OrderInfo? _selectedOpenOrder;
+
+    [ObservableProperty]
+    private ConditionalOrder? _selectedConditionalOrder;
+
+    [ObservableProperty]
+    private CandidateSymbol? _selectedCandidateSymbol;
 
     // 精度信息显示属性
     [ObservableProperty]
@@ -286,6 +319,13 @@ public partial class TestViewModel : ObservableObject
     public RelayCommand<object> AdjustLimitPriceCommand { get; private set; } = null!;
     public RelayCommand<object> AdjustLongBreakoutPriceCommand { get; private set; } = null!;
     public RelayCommand<object> AdjustShortBreakdownPriceCommand { get; private set; } = null!;
+    
+    // 撤单命令
+    public RelayCommand CancelOpenOrderCommand { get; private set; } = null!;
+    public RelayCommand CancelConditionalOrderCommand { get; private set; } = null!;
+    
+    // 刷新命令
+    public RelayCommand RefreshDataCommand { get; private set; } = null!;
 
     #endregion
 
@@ -325,6 +365,13 @@ public partial class TestViewModel : ObservableObject
         AdjustLimitPriceCommand = new RelayCommand<object>(async param => await AdjustLimitPriceAsync(param?.ToString() ?? ""));
         AdjustLongBreakoutPriceCommand = new RelayCommand<object>(async param => await AdjustLongBreakoutPriceAsync(param?.ToString() ?? ""));
         AdjustShortBreakdownPriceCommand = new RelayCommand<object>(async param => await AdjustShortBreakdownPriceAsync(param?.ToString() ?? ""));
+        
+        // 撤单命令
+        CancelOpenOrderCommand = new RelayCommand(async () => await CancelOpenOrderAsync());
+        CancelConditionalOrderCommand = new RelayCommand(async () => await CancelConditionalOrderAsync());
+        
+        // 刷新命令
+        RefreshDataCommand = new RelayCommand(async () => await RefreshAccountAndPositionDataAsync());
     }
 
     private void AddMockData()
@@ -387,6 +434,14 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
+                // 首先设置杠杆
+                Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
+                bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
+                if (!leverageSet)
+                {
+                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                }
+
                 // 构建下单请求
                 var tradingRequest = new TradingRequest
                 {
@@ -395,7 +450,8 @@ public partial class TestViewModel : ObservableObject
                     Type = "MARKET",
                     Quantity = MarketQuantity,
                     Price = 0, // 市价单不需要价格
-                    ReduceOnly = false
+                    ReduceOnly = false,
+                    Leverage = (int)MarketLeverage
                 };
 
                 // 调用币安API下单
@@ -406,7 +462,10 @@ public partial class TestViewModel : ObservableObject
                     // 市价单立即成交，不添加到委托列表
                     StatusMessage = $"✅ 市价下单成功 - {MarketSymbol} {MarketSide} {MarketQuantity}";
                     
-                    MessageBox.Show($"✅ 市价下单执行成功！\n\n合约: {MarketSymbol}\n方向: {MarketSide}\n数量: {MarketQuantity}", 
+                    // 自动创建止损委托单
+                    await CreateStopLossOrderAsync(MarketSymbol, MarketSide, MarketQuantity);
+                    
+                    MessageBox.Show($"✅ 市价下单执行成功！\n\n合约: {MarketSymbol}\n方向: {MarketSide}\n数量: {MarketQuantity}\n\n✅ 已自动创建止损委托单", 
                                   "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // 记录交易历史
@@ -469,15 +528,34 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
+                // 首先设置杠杆
+                Console.WriteLine($"🔧 设置杠杆: {LimitSymbol} {LimitLeverage}x");
+                bool leverageSet = await _binanceService.SetLeverageAsync(LimitSymbol, (int)LimitLeverage);
+                if (!leverageSet)
+                {
+                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                }
+
+                // 根据合约精度调整价格和数量
+                var adjustedPrice = LimitPrice;
+                var adjustedQuantity = LimitQuantity;
+                
+                if (_binanceSymbolService != null)
+                {
+                    adjustedPrice = await _binanceSymbolService.AdjustPriceToValidAsync(LimitSymbol, LimitPrice);
+                    adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(LimitSymbol, LimitQuantity);
+                }
+
                 // 构建限价下单请求
                 var tradingRequest = new TradingRequest
                 {
                     Symbol = LimitSymbol,
                     Side = LimitSide,
                     Type = "LIMIT",
-                    Quantity = LimitQuantity,
-                    Price = LimitPrice,
-                    ReduceOnly = false
+                    Quantity = adjustedQuantity,
+                    Price = adjustedPrice,
+                    ReduceOnly = false,
+                    Leverage = (int)LimitLeverage
                 };
 
                 // 调用币安API下单
@@ -485,7 +563,7 @@ public partial class TestViewModel : ObservableObject
 
                 if (success)
                 {
-                    StatusMessage = $"✅ 限价下单成功 - {LimitSymbol} {LimitSide} {LimitQuantity}@{LimitPrice}";
+                    StatusMessage = $"✅ 限价下单成功 - {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice}";
                     
                     // 延迟刷新委托列表以获取真实的委托信息
                     _ = Task.Run(async () =>
@@ -494,13 +572,18 @@ public partial class TestViewModel : ObservableObject
                         await RefreshOpenOrdersAsync();
                     });
                     
-                    MessageBox.Show($"✅ 限价下单执行成功！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {LimitQuantity}\n价格: {LimitPrice}", 
-                                  "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var successMessage = $"✅ 限价下单执行成功！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {adjustedQuantity}\n价格: {adjustedPrice}";
+                    if (adjustedQuantity != LimitQuantity || adjustedPrice != LimitPrice)
+                    {
+                        successMessage += $"\n\n原始输入:\n数量: {LimitQuantity}\n价格: {LimitPrice}";
+                    }
+                    
+                    MessageBox.Show(successMessage, "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // 记录交易历史
                     if (_logService != null)
                     {
-                        await _logService.LogInfoAsync($"限价下单成功: {LimitSymbol} {LimitSide} {LimitQuantity}@{LimitPrice}", "交易");
+                        await _logService.LogInfoAsync($"限价下单成功: {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice}", "交易");
                     }
 
                     // 自动添加到最近交易合约列表
@@ -568,20 +651,48 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
+                // 首先设置杠杆
+                Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
+                bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
+                if (!leverageSet)
+                {
+                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                }
+
+                // 根据合约精度调整价格和数量
+                var adjustedStopPrice = LongBreakoutPrice;
+                var adjustedQuantity = MarketQuantity;
+                
+                if (_binanceSymbolService != null)
+                {
+                    adjustedStopPrice = await _binanceSymbolService.AdjustPriceToValidAsync(MarketSymbol, LongBreakoutPrice);
+                    adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(MarketSymbol, MarketQuantity);
+                }
+
                 // 构建条件单请求 - 做多突破条件单
                 var tradingRequest = new TradingRequest
                 {
                     Symbol = MarketSymbol,
                     Side = "BUY",
                     Type = "STOP_MARKET",
-                    Quantity = MarketQuantity,
+                    Quantity = adjustedQuantity,
                     Price = 0, // 条件单触发后以市价成交
-                    StopPrice = LongBreakoutPrice, // 触发价格
-                    ReduceOnly = false
+                    StopPrice = adjustedStopPrice, // 触发价格
+                    ReduceOnly = false,
+                    Leverage = (int)MarketLeverage
                 };
 
-                // 调用币安API下条件单
-                bool success = await _binanceService.PlaceOrderAsync(tradingRequest);
+                // 调试信息：打印请求详情
+                Console.WriteLine($"🔍 做多条件单请求详情:");
+                Console.WriteLine($"   Symbol: {tradingRequest.Symbol}");
+                Console.WriteLine($"   Side: {tradingRequest.Side}");
+                Console.WriteLine($"   Type: {tradingRequest.Type}");
+                Console.WriteLine($"   Quantity: {tradingRequest.Quantity}");
+                Console.WriteLine($"   StopPrice: {tradingRequest.StopPrice}");
+                Console.WriteLine($"   ReduceOnly: {tradingRequest.ReduceOnly}");
+
+                // 调用币安API下条件单，获取OrderId
+                var (success, orderId) = await _binanceService.PlaceOrderWithIdAsync(tradingRequest);
 
                 if (success)
                 {
@@ -598,28 +709,50 @@ public partial class TestViewModel : ObservableObject
                         Status = "PENDING",
                         CreateTime = DateTime.Now,
                         Remark = $"做多突破 - 当价格突破 {LongBreakoutPrice:F4} 时买入",
-                        ReduceOnly = false
+                        ReduceOnly = false,
+                        OrderId = orderId.ToString() // 保存真实的OrderId
                     };
 
+                    // 更新条件单信息为调整后的参数
+                    longConditionalOrder.Quantity = adjustedQuantity;
+                    longConditionalOrder.TriggerPrice = adjustedStopPrice;
+                    longConditionalOrder.Remark = $"做多突破 - 当价格突破 {adjustedStopPrice:F4} 时买入";
+
                     ConditionalOrders.Add(longConditionalOrder);
-                    StatusMessage = $"✅ 做多条件单创建成功 - {MarketSymbol} 突破价 {LongBreakoutPrice:F4}";
+                    StatusMessage = $"✅ 做多条件单创建成功 - {MarketSymbol} 突破价 {adjustedStopPrice:F4}";
                     
-                    MessageBox.Show($"✅ 做多条件单创建成功！\n\n合约: {MarketSymbol}\n方向: 买入\n数量: {MarketQuantity}\n突破价: {LongBreakoutPrice:F4}\n\n条件单将在价格突破时自动执行", 
-                                  "创建成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var successMessage = $"✅ 做多条件单创建成功！\n\n合约: {MarketSymbol}\n方向: 买入\n数量: {adjustedQuantity}\n突破价: {adjustedStopPrice:F4}\n\n条件单将在价格突破时自动执行";
+                    if (adjustedQuantity != MarketQuantity || adjustedStopPrice != LongBreakoutPrice)
+                    {
+                        successMessage += $"\n\n原始输入:\n数量: {MarketQuantity}\n突破价: {LongBreakoutPrice:F4}";
+                    }
+                    
+                    MessageBox.Show(successMessage, "创建成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // 记录交易历史
                     if (_logService != null)
                     {
-                        await _logService.LogInfoAsync($"做多条件单创建成功: {MarketSymbol} 突破价 {LongBreakoutPrice:F4}", "交易");
+                        await _logService.LogInfoAsync($"做多条件单创建成功: {MarketSymbol} 突破价 {adjustedStopPrice:F4}", "交易");
                     }
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
+                    
+                    // 延迟刷新条件单列表以同步API状态
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000); // 等待1秒确保订单在交易所生效
+                        await RefreshConditionalOrdersAsync();
+                    });
                 }
                 else
                 {
                     StatusMessage = $"❌ 做多条件单创建失败 - {MarketSymbol}";
-                    MessageBox.Show("❌ 做多条件单创建失败！请检查网络连接和API权限。", "创建失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    Console.WriteLine($"❌ 做多条件单API调用失败: {MarketSymbol} {adjustedQuantity}@{adjustedStopPrice}");
+                    Console.WriteLine($"📝 请求参数: Symbol={MarketSymbol}, Side=BUY, Type=STOP_MARKET, Quantity={adjustedQuantity}, StopPrice={adjustedStopPrice}");
+                    
+                    MessageBox.Show($"❌ 做多条件单创建失败！\n\n合约: {MarketSymbol}\n数量: {adjustedQuantity}\n突破价: {adjustedStopPrice:F4}\n\n请检查:\n1. 网络连接\n2. API权限\n3. 合约是否有效\n4. 价格和数量精度", 
+                                  "创建失败", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -678,20 +811,39 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
+                // 首先设置杠杆
+                Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
+                bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
+                if (!leverageSet)
+                {
+                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                }
+
+                // 根据合约精度调整价格和数量
+                var adjustedStopPrice = ShortBreakdownPrice;
+                var adjustedQuantity = MarketQuantity;
+                
+                if (_binanceSymbolService != null)
+                {
+                    adjustedStopPrice = await _binanceSymbolService.AdjustPriceToValidAsync(MarketSymbol, ShortBreakdownPrice);
+                    adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(MarketSymbol, MarketQuantity);
+                }
+
                 // 构建条件单请求 - 做空跌破条件单
                 var tradingRequest = new TradingRequest
                 {
                     Symbol = MarketSymbol,
                     Side = "SELL",
                     Type = "STOP_MARKET",
-                    Quantity = MarketQuantity,
+                    Quantity = adjustedQuantity,
                     Price = 0, // 条件单触发后以市价成交
-                    StopPrice = ShortBreakdownPrice, // 触发价格
-                    ReduceOnly = false
+                    StopPrice = adjustedStopPrice, // 触发价格
+                    ReduceOnly = false,
+                    Leverage = (int)MarketLeverage
                 };
 
-                // 调用币安API下条件单
-                bool success = await _binanceService.PlaceOrderAsync(tradingRequest);
+                // 调用币安API下条件单，获取OrderId
+                var (success, orderId) = await _binanceService.PlaceOrderWithIdAsync(tradingRequest);
 
                 if (success)
                 {
@@ -708,23 +860,41 @@ public partial class TestViewModel : ObservableObject
                         Status = "PENDING",
                         CreateTime = DateTime.Now,
                         Remark = $"做空跌破 - 当价格跌破 {ShortBreakdownPrice:F4} 时卖出",
-                        ReduceOnly = false
+                        ReduceOnly = false,
+                        OrderId = orderId.ToString() // 保存真实的OrderId
                     };
 
+                    // 更新条件单信息为调整后的参数
+                    shortConditionalOrder.Quantity = adjustedQuantity;
+                    shortConditionalOrder.TriggerPrice = adjustedStopPrice;
+                    shortConditionalOrder.Remark = $"做空跌破 - 当价格跌破 {adjustedStopPrice:F4} 时卖出";
+
                     ConditionalOrders.Add(shortConditionalOrder);
-                    StatusMessage = $"✅ 做空条件单创建成功 - {MarketSymbol} 跌破价 {ShortBreakdownPrice:F4}";
+                    StatusMessage = $"✅ 做空条件单创建成功 - {MarketSymbol} 跌破价 {adjustedStopPrice:F4}";
                     
-                    MessageBox.Show($"✅ 做空条件单创建成功！\n\n合约: {MarketSymbol}\n方向: 卖出\n数量: {MarketQuantity}\n跌破价: {ShortBreakdownPrice:F4}\n\n条件单将在价格跌破时自动执行", 
-                                  "创建成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var successMessage = $"✅ 做空条件单创建成功！\n\n合约: {MarketSymbol}\n方向: 卖出\n数量: {adjustedQuantity}\n跌破价: {adjustedStopPrice:F4}\n\n条件单将在价格跌破时自动执行";
+                    if (adjustedQuantity != MarketQuantity || adjustedStopPrice != ShortBreakdownPrice)
+                    {
+                        successMessage += $"\n\n原始输入:\n数量: {MarketQuantity}\n跌破价: {ShortBreakdownPrice:F4}";
+                    }
+                    
+                    MessageBox.Show(successMessage, "创建成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // 记录交易历史
                     if (_logService != null)
                     {
-                        await _logService.LogInfoAsync($"做空条件单创建成功: {MarketSymbol} 跌破价 {ShortBreakdownPrice:F4}", "交易");
+                        await _logService.LogInfoAsync($"做空条件单创建成功: {MarketSymbol} 跌破价 {adjustedStopPrice:F4}", "交易");
                     }
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
+                    
+                    // 延迟刷新条件单列表以同步API状态
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000); // 等待1秒确保订单在交易所生效
+                        await RefreshConditionalOrdersAsync();
+                    });
                 }
                 else
                 {
@@ -749,9 +919,76 @@ public partial class TestViewModel : ObservableObject
     {
         if (!string.IsNullOrEmpty(NewSymbolInput))
         {
-            CandidateSymbols.Add(new CandidateSymbol { Symbol = NewSymbolInput.ToUpper() });
+            var normalizedSymbol = NewSymbolInput.Trim().ToUpper();
+            
+            // 检查是否已存在
+            var existingSymbol = CandidateSymbols.FirstOrDefault(s => s.Symbol.Equals(normalizedSymbol, StringComparison.OrdinalIgnoreCase));
+            
+            if (existingSymbol == null)
+            {
+                // 验证合约是否有效（可选）
+                if (_binanceSymbolService != null)
+                {
+                    try
+                    {
+                        var isValid = await _binanceSymbolService.IsSymbolTradableAsync(normalizedSymbol);
+                        if (!isValid)
+                        {
+                            StatusMessage = $"❌ 合约 {normalizedSymbol} 不是有效的交易合约";
+                            MessageBox.Show($"合约 {normalizedSymbol} 不是有效的交易合约，请检查输入。", "无效合约", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"验证合约失败: {ex.Message}");
+                        // 验证失败时仍允许添加
+                    }
+                }
+                
+                // 添加到候选列表
+                CandidateSymbols.Add(new CandidateSymbol { Symbol = normalizedSymbol });
+                
+                // 保存到配置文件
+                if (_configService != null)
+                {
+                    try
+                    {
+                        await _configService.SaveCandidateSymbolsAsync(CandidateSymbols.ToList());
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"保存候选合约列表失败: {ex.Message}");
+                    }
+                }
+                
+                StatusMessage = $"✅ 合约 {normalizedSymbol} 已添加";
+            }
+            else
+            {
+                StatusMessage = $"⚠️ 合约 {normalizedSymbol} 已存在于候选列表中";
+                
+                // 移到最后位置（最近使用）
+                CandidateSymbols.Remove(existingSymbol);
+                CandidateSymbols.Add(existingSymbol);
+                
+                // 保存到配置文件
+                if (_configService != null)
+                {
+                    try
+                    {
+                        await _configService.SaveCandidateSymbolsAsync(CandidateSymbols.ToList());
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"保存候选合约列表失败: {ex.Message}");
+                    }
+                }
+            }
+            
+            // 清空输入框和建议列表
             NewSymbolInput = "";
-            StatusMessage = $"合约 {NewSymbolInput} 已添加";
+            SymbolSuggestions.Clear();
         }
         await Task.CompletedTask;
     }
@@ -1345,11 +1582,31 @@ public partial class TestViewModel : ObservableObject
     // 合约管理功能
     private async Task RemoveCandidateSymbolAsync()
     {
-        if (CandidateSymbols.Count > 0)
+        if (SelectedCandidateSymbol != null)
         {
-            var lastSymbol = CandidateSymbols.Last();
-            CandidateSymbols.Remove(lastSymbol);
-            StatusMessage = $"已删除合约: {lastSymbol.Symbol}";
+            var symbolToRemove = SelectedCandidateSymbol;
+            CandidateSymbols.Remove(symbolToRemove);
+            StatusMessage = $"已删除合约: {symbolToRemove.Symbol}";
+            
+            // 保存到配置文件
+            if (_configService != null)
+            {
+                try
+                {
+                    await _configService.SaveCandidateSymbolsAsync(CandidateSymbols.ToList());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"保存候选合约列表失败: {ex.Message}");
+                }
+            }
+            
+            // 清除选择
+            SelectedCandidateSymbol = null;
+        }
+        else
+        {
+            StatusMessage = "请先选择要删除的合约";
         }
         await Task.CompletedTask;
     }
@@ -1453,11 +1710,14 @@ public partial class TestViewModel : ObservableObject
                 calculatedQuantity = minQty;
             }
 
-            // 更新数量
-            MarketQuantity = calculatedQuantity;
-            LimitQuantity = calculatedQuantity;
+            // 在UI线程上更新数量
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                MarketQuantity = calculatedQuantity;
+                LimitQuantity = calculatedQuantity;
+            });
 
-            Console.WriteLine($"重新计算数量: {calculatedQuantity.ToString($"F{quantityPrecision}")} (精度: {quantityPrecision}位, 最小: {minQty})");
+            Console.WriteLine($"🔄 重新计算数量: {calculatedQuantity.ToString($"F{quantityPrecision}")} (精度: {quantityPrecision}位, 最小: {minQty})");
         }
         catch (Exception ex)
         {
@@ -1829,9 +2089,13 @@ public partial class TestViewModel : ObservableObject
             if (SelectedAccount == null || _binanceService == null)
                 return;
 
-            // 刷新账户和持仓信息
-            await RefreshAccountInfoAsync();
-            await RefreshPositionsDataAsync();
+            // 并发刷新账户信息、持仓信息、委托订单和条件单
+            await Task.WhenAll(
+                RefreshAccountInfoAsync(),
+                RefreshPositionsDataAsync(),
+                RefreshOpenOrdersAsync(),
+                RefreshConditionalOrdersAsync()
+            );
 
             // 更新状态消息
             StatusMessage = $"✅ 数据已刷新 - {DateTime.Now:HH:mm:ss}";
@@ -2051,8 +2315,8 @@ public partial class TestViewModel : ObservableObject
                     OpenOrders.Clear();
                     foreach (var order in openOrders)
                     {
-                        // 只显示限价单和止损单（条件单）
-                        if (order.Type == "LIMIT" || order.Type == "STOP_MARKET" || order.Type == "STOP")
+                        // 只显示限价单和reduce-only的止损单（排除条件单功能创建的止损单）
+                        if (order.Type == "LIMIT" || (order.Type == "STOP_MARKET" && order.ReduceOnly))
                         {
                             OpenOrders.Add(order);
                         }
@@ -2080,6 +2344,375 @@ public partial class TestViewModel : ObservableObject
             }
         }
     }
-    
-    #endregion
-} 
+
+    /// <summary>
+    /// 刷新条件单信息（从API同步）
+    /// </summary>
+    private async Task RefreshConditionalOrdersAsync()
+    {
+        if (SelectedAccount == null || _binanceService == null) return;
+        
+        try
+        {
+            // 获取所有开放订单，过滤出条件单
+            var openOrders = await _binanceService.GetOpenOrdersAsync();
+            if (openOrders != null)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    // 获取当前本地条件单的OrderId列表，用于保留本地创建但API中不存在的
+                    var localOrderIds = ConditionalOrders
+                        .Where(co => !string.IsNullOrEmpty(co.OrderId))
+                        .Select(co => co.OrderId)
+                        .ToHashSet();
+                    
+                    // 从API订单中找出条件单（STOP_MARKET 且非 ReduceOnly）
+                    var apiConditionalOrders = openOrders
+                        .Where(order => order.Type == "STOP_MARKET" && !order.ReduceOnly)
+                        .ToList();
+                    
+                    // 清除本地条件单列表中API已不存在的订单
+                    var toRemove = ConditionalOrders
+                        .Where(co => !string.IsNullOrEmpty(co.OrderId) && 
+                                   !apiConditionalOrders.Any(api => api.OrderId.ToString() == co.OrderId))
+                        .ToList();
+                    
+                    foreach (var removedOrder in toRemove)
+                    {
+                        ConditionalOrders.Remove(removedOrder);
+                        Console.WriteLine($"🗑️ 移除已不存在的条件单: {removedOrder.Symbol} {removedOrder.OrderId}");
+                    }
+                    
+                    // 添加或更新API中存在的条件单
+                    foreach (var apiOrder in apiConditionalOrders)
+                    {
+                        var existingOrder = ConditionalOrders
+                            .FirstOrDefault(co => co.OrderId == apiOrder.OrderId.ToString());
+                        
+                        if (existingOrder == null)
+                        {
+                            // 新增条件单
+                            var newConditionalOrder = new ConditionalOrder
+                            {
+                                OrderId = apiOrder.OrderId.ToString(),
+                                Symbol = apiOrder.Symbol,
+                                Side = apiOrder.Side,
+                                Type = apiOrder.Type,
+                                Quantity = apiOrder.OrigQty,
+                                TriggerPrice = apiOrder.StopPrice,
+                                OrderPrice = apiOrder.Price,
+                                Status = apiOrder.Status == "NEW" ? "PENDING" : "EXECUTED",
+                                CreateTime = DateTimeOffset.FromUnixTimeMilliseconds(apiOrder.UpdateTime).LocalDateTime,
+                                Remark = $"{(apiOrder.Side == "BUY" ? "做多" : "做空")}条件单 - 触发价: {apiOrder.StopPrice:F4}",
+                                ReduceOnly = apiOrder.ReduceOnly
+                            };
+                            
+                            ConditionalOrders.Add(newConditionalOrder);
+                            Console.WriteLine($"➕ 同步新的条件单: {newConditionalOrder.Symbol} {newConditionalOrder.OrderId}");
+                        }
+                        else
+                        {
+                            // 更新现有条件单状态
+                            existingOrder.Status = apiOrder.Status == "NEW" ? "PENDING" : 
+                                                 apiOrder.Status == "FILLED" ? "EXECUTED" : 
+                                                 apiOrder.Status == "CANCELED" ? "CANCELLED" : existingOrder.Status;
+                            existingOrder.Quantity = apiOrder.OrigQty;
+                            existingOrder.TriggerPrice = apiOrder.StopPrice;
+                        }
+                    }
+                    
+                    StatusMessage = $"✅ 条件单已刷新 - 共{ConditionalOrders.Count}个条件单";
+                });
+                
+                if (_logService != null)
+                {
+                    await _logService.LogInfoAsync($"条件单刷新成功 - 条件单数量: {ConditionalOrders.Count}", "API");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                StatusMessage = $"获取条件单失败: {ex.Message}";
+            });
+            
+            if (_logService != null)
+            {
+                await _logService.LogErrorAsync("刷新条件单失败", ex, "API");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 撤销开放委托单
+    /// </summary>
+    private async Task CancelOpenOrderAsync()
+    {
+        if (SelectedOpenOrder == null)
+        {
+            MessageBox.Show("请先选择要撤销的委托单", "撤单失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirmMessage = $"🗑️ 撤单确认\n\n合约: {SelectedOpenOrder.Symbol}\n方向: {SelectedOpenOrder.Side}\n数量: {SelectedOpenOrder.OrigQty}\n价格: {SelectedOpenOrder.Price}\n类型: {SelectedOpenOrder.Type}\n\n确定要撤销这个委托单吗？";
+        var result = MessageBox.Show(confirmMessage, "撤单确认", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            StatusMessage = "正在撤销委托单...";
+
+            try
+            {
+                if (_binanceService == null)
+                {
+                    MessageBox.Show("币安服务未初始化", "撤单失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    StatusMessage = "❌ 撤单失败: 服务未初始化";
+                    return;
+                }
+
+                // 调用币安API撤单
+                bool success = await _binanceService.CancelOrderAsync(SelectedOpenOrder.Symbol, SelectedOpenOrder.OrderId);
+
+                if (success)
+                {
+                    StatusMessage = $"✅ 委托单撤销成功 - {SelectedOpenOrder.Symbol}";
+                    MessageBox.Show($"✅ 委托单撤销成功！\n\n合约: {SelectedOpenOrder.Symbol}\n订单ID: {SelectedOpenOrder.OrderId}", 
+                                  "撤单成功", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                    // 从本地列表中移除
+                    OpenOrders.Remove(SelectedOpenOrder);
+                    SelectedOpenOrder = null;
+
+                    // 记录日志
+                    if (_logService != null)
+                    {
+                        await _logService.LogInfoAsync($"委托单撤销成功: {SelectedOpenOrder?.Symbol} ID:{SelectedOpenOrder?.OrderId}", "交易");
+                    }
+
+                    // 延迟刷新委托列表
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000);
+                        await RefreshOpenOrdersAsync();
+                    });
+                }
+                else
+                {
+                    StatusMessage = $"❌ 委托单撤销失败 - {SelectedOpenOrder.Symbol}";
+                    MessageBox.Show("❌ 委托单撤销失败！请检查网络连接和API权限。", "撤单失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ 撤单异常: {ex.Message}";
+                MessageBox.Show($"❌ 撤单异常！\n\n错误信息: {ex.Message}", "撤单异常", MessageBoxButton.OK, MessageBoxImage.Error);
+                
+                if (_logService != null)
+                {
+                    await _logService.LogErrorAsync("撤销委托单异常", ex, "交易");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 撤销条件单
+    /// </summary>
+    private async Task CancelConditionalOrderAsync()
+    {
+        if (SelectedConditionalOrder == null)
+        {
+            MessageBox.Show("请先选择要撤销的条件单", "撤单失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirmMessage = $"🗑️ 撤单确认\n\n合约: {SelectedConditionalOrder.Symbol}\n方向: {SelectedConditionalOrder.Side}\n数量: {SelectedConditionalOrder.Quantity}\n触发价: {SelectedConditionalOrder.TriggerPrice}\n类型: {SelectedConditionalOrder.Type}\n\n确定要撤销这个条件单吗？";
+        var result = MessageBox.Show(confirmMessage, "撤单确认", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            StatusMessage = "正在撤销条件单...";
+
+            try
+            {
+                // 保存选中的条件单信息，防止在UI操作过程中丢失引用
+                var orderToRemove = SelectedConditionalOrder;
+                
+                // 检查是否需要调用API撤单
+                bool apiCalled = false;
+                if (!string.IsNullOrEmpty(orderToRemove.OrderId) && _binanceService != null)
+                {
+                    // 尝试将OrderId转换为long类型
+                    if (long.TryParse(orderToRemove.OrderId, out long orderId))
+                    {
+                        Console.WriteLine($"🔄 正在调用API撤销条件单: {orderToRemove.Symbol}, OrderId: {orderId}");
+                        
+                        // 调用真实API撤单
+                        bool apiSuccess = await _binanceService.CancelOrderAsync(orderToRemove.Symbol, orderId);
+                        apiCalled = true;
+                        
+                        if (!apiSuccess)
+                        {
+                            StatusMessage = $"❌ 条件单API撤销失败 - {orderToRemove.Symbol}";
+                            MessageBox.Show("❌ 条件单撤销失败！请检查网络连接和API权限。", "撤单失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                            return;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"✅ API撤单成功: {orderToRemove.Symbol}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ OrderId格式错误，无法转换为long: {orderToRemove.OrderId}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️ 条件单没有OrderId或服务未初始化，只进行本地移除: OrderId='{orderToRemove.OrderId}', Service={_binanceService != null}");
+                }
+                
+                // 在UI线程上更新界面
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    StatusMessage = $"✅ 条件单撤销成功 - {orderToRemove.Symbol}";
+                    
+                    // 从本地列表中移除
+                    ConditionalOrders.Remove(orderToRemove);
+                    SelectedConditionalOrder = null;
+                });
+                
+                var resultMessage = $"✅ 条件单撤销成功！\n\n合约: {orderToRemove.Symbol}\n触发价: {orderToRemove.TriggerPrice}";
+                if (apiCalled)
+                {
+                    resultMessage += "\n\n✅ 已调用API撤销后台订单";
+                }
+                else
+                {
+                    resultMessage += "\n\n⚠️ 仅从本地移除，未调用API";
+                }
+                
+                MessageBox.Show(resultMessage, "撤单成功", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                // 记录日志
+                if (_logService != null)
+                {
+                    await _logService.LogInfoAsync($"条件单撤销成功: {orderToRemove.Symbol} 触发价:{orderToRemove.TriggerPrice}", "交易");
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ 撤单异常: {ex.Message}";
+                MessageBox.Show($"❌ 撤单异常！\n\n错误信息: {ex.Message}", "撤单异常", MessageBoxButton.OK, MessageBoxImage.Error);
+                
+                if (_logService != null)
+                {
+                    await _logService.LogErrorAsync("撤销条件单异常", ex, "交易");
+                }
+            }
+                 }
+     }
+
+     /// <summary>
+     /// 自动创建止损委托单
+     /// </summary>
+     private async Task CreateStopLossOrderAsync(string symbol, string side, decimal quantity)
+     {
+         try
+         {
+             if (_binanceService == null || string.IsNullOrEmpty(symbol))
+                 return;
+
+             // 获取当前价格作为止损价格的基准
+             decimal currentPrice = LatestPrice > 0 ? LatestPrice : await _binanceService.GetLatestPriceAsync(symbol);
+             if (currentPrice <= 0)
+             {
+                 Console.WriteLine($"❌ 无法获取 {symbol} 的当前价格，跳过止损单创建");
+                 return;
+             }
+
+             // 计算止损价格：根据方向和止损比例
+             decimal stopLossRatio = ConditionalStopLossRatio / 100m; // 转换为小数
+             decimal stopPrice;
+             string stopSide;
+
+             if (side == "BUY") // 做多，止损卖出
+             {
+                 stopPrice = currentPrice * (1 - stopLossRatio); // 价格下跌到止损比例时卖出
+                 stopSide = "SELL";
+             }
+             else // 做空，止损买入
+             {
+                 stopPrice = currentPrice * (1 + stopLossRatio); // 价格上涨到止损比例时买入
+                 stopSide = "BUY";
+             }
+
+             // 根据合约精度调整止损价格和数量
+             var adjustedStopPrice = stopPrice;
+             var adjustedQuantity = quantity;
+             
+             if (_binanceSymbolService != null)
+             {
+                 adjustedStopPrice = await _binanceSymbolService.AdjustPriceToValidAsync(symbol, stopPrice);
+                 adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(symbol, quantity);
+             }
+
+                         // 构建止损单请求
+            var stopLossRequest = new TradingRequest
+            {
+                Symbol = symbol,
+                Side = stopSide,
+                Type = "STOP_MARKET",
+                Quantity = adjustedQuantity,
+                Price = 0, // STOP_MARKET 触发后以市价成交
+                StopPrice = adjustedStopPrice,
+                ReduceOnly = true, // 重要：设置为 ReduceOnly，只能平仓
+                Leverage = (int)MarketLeverage // 使用当前设置的杠杆
+            };
+
+             // 发送止损单
+             bool stopSuccess = await _binanceService.PlaceOrderAsync(stopLossRequest);
+
+             if (stopSuccess)
+             {
+                 Console.WriteLine($"✅ 自动止损单创建成功: {symbol} {stopSide} {adjustedQuantity}@{adjustedStopPrice} (止损比例:{ConditionalStopLossRatio}%)");
+                 
+                 // 记录到日志
+                 if (_logService != null)
+                 {
+                     await _logService.LogInfoAsync($"自动止损单创建成功: {symbol} {stopSide} {adjustedQuantity}@{adjustedStopPrice} 止损比例:{ConditionalStopLossRatio}%", "交易");
+                 }
+
+                 // 延迟刷新委托列表以显示新的止损单
+                 _ = Task.Run(async () =>
+                 {
+                     await Task.Delay(1000);
+                     await RefreshOpenOrdersAsync();
+                 });
+             }
+             else
+             {
+                 Console.WriteLine($"❌ 自动止损单创建失败: {symbol}");
+                 StatusMessage = $"⚠️ 市价下单成功，但止损单创建失败 - {symbol}";
+                 
+                 if (_logService != null)
+                 {
+                     await _logService.LogErrorAsync($"自动止损单创建失败: {symbol}", new Exception("API调用失败"), "交易");
+                 }
+             }
+         }
+         catch (Exception ex)
+         {
+             Console.WriteLine($"❌ 创建止损单异常: {ex.Message}");
+             StatusMessage = $"⚠️ 市价下单成功，但止损单创建异常 - {symbol}";
+             
+             if (_logService != null)
+             {
+                 await _logService.LogErrorAsync("创建自动止损单异常", ex, "交易");
+             }
+         }
+     }
+     
+     #endregion
+ } 

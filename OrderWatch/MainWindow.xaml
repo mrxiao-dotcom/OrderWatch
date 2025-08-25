@@ -27,7 +27,9 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                  HorizontalScrollBarVisibility="Auto">
+        <Grid MinHeight="900">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -168,7 +170,9 @@
                                                         <DataTemplate>
                                                             <TextBlock Text="{Binding}" 
                                                                        Padding="8,4"
-                                                                       FontSize="12"/>
+                                                                       FontSize="12"
+                                                                       Cursor="Hand"
+                                                                       MouseLeftButtonDown="SymbolSuggestion_MouseLeftButtonDown"/>
                                                         </DataTemplate>
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>
@@ -269,37 +273,41 @@
                     <StackPanel>
                         <TextBlock Text="📈 当前持仓" Style="{StaticResource HeaderStyle}"/>
                         
-                        <DataGrid ItemsSource="{Binding Positions}" 
-                                  SelectedItem="{Binding SelectedPosition}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  MouseDoubleClick="PositionsDataGrid_MouseDoubleClick">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="序号" Width="50">
-                                    <DataGridTextColumn.Binding>
-                                        <Binding Path="." RelativeSource="{RelativeSource AncestorType=DataGridRow}" Converter="{StaticResource IndexConverter}"/>
-                                    </DataGridTextColumn.Binding>
-                                </DataGridTextColumn>
-                                <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="80"/>
-                                <DataGridTextColumn Header="数量" Binding="{Binding PositionAmt, StringFormat=F4}" Width="80"/>
-                                <DataGridTextColumn Header="进场价" Binding="{Binding EntryPrice, StringFormat=F4}" Width="80"/>
-                                <DataGridTextColumn Header="方向" Binding="{Binding PositionSideDisplay}" Width="60"/>
-                                <DataGridTextColumn Header="杠杆" Binding="{Binding Leverage}" Width="50"/>
-                                <DataGridTextColumn Header="最新市值" Binding="{Binding Notional, StringFormat=F2}" Width="80"/>
-                                <DataGridTemplateColumn Header="浮动盈亏" Width="80">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding UnRealizedProfit, StringFormat=F2}" 
-                                                       Foreground="{Binding UnRealizedProfit, Converter={StaticResource ProfitLossColorConverter}}"
-                                                       HorizontalAlignment="Right"
-                                                       FontWeight="Bold"/>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="委托数" Binding="{Binding OrderCount}" Width="60"/>
-                                <DataGridTextColumn Header="条件单数" Binding="{Binding ConditionalOrderCount}" Width="70"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                                      HorizontalScrollBarVisibility="Auto"
+                                      MaxHeight="300">
+                            <DataGrid ItemsSource="{Binding Positions}" 
+                                      SelectedItem="{Binding SelectedPosition}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      MouseDoubleClick="PositionsDataGrid_MouseDoubleClick">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="序号" Width="50">
+                                        <DataGridTextColumn.Binding>
+                                            <Binding Path="." RelativeSource="{RelativeSource AncestorType=DataGridRow}" Converter="{StaticResource IndexConverter}"/>
+                                        </DataGridTextColumn.Binding>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="80"/>
+                                    <DataGridTextColumn Header="数量" Binding="{Binding PositionAmt, StringFormat=F4}" Width="80"/>
+                                    <DataGridTextColumn Header="进场价" Binding="{Binding EntryPrice, StringFormat=F4}" Width="80"/>
+                                    <DataGridTextColumn Header="方向" Binding="{Binding PositionSideDisplay}" Width="60"/>
+                                    <DataGridTextColumn Header="杠杆" Binding="{Binding Leverage}" Width="50"/>
+                                    <DataGridTextColumn Header="最新市值" Binding="{Binding Notional, StringFormat=F2}" Width="80"/>
+                                    <DataGridTemplateColumn Header="浮动盈亏" Width="80">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding UnRealizedProfit, StringFormat=F2}" 
+                                                           Foreground="{Binding UnRealizedProfit, Converter={StaticResource ProfitLossColorConverter}}"
+                                                           HorizontalAlignment="Right"
+                                                           FontWeight="Bold"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="委托数" Binding="{Binding OrderCount}" Width="60"/>
+                                    <DataGridTextColumn Header="条件单数" Binding="{Binding ConditionalOrderCount}" Width="70"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </ScrollViewer>
                     </StackPanel>
                 </Border>
                 
@@ -322,62 +330,90 @@
                     <!-- 开放委托 -->
                     <Border Grid.Column="0" Style="{StaticResource SectionStyle}" Margin="0,0,5,0">
                         <StackPanel>
-                            <TextBlock Text="📋 开放委托" Style="{StaticResource HeaderStyle}"/>
-                            <DataGrid ItemsSource="{Binding OpenOrders}" 
-                                      SelectedItem="{Binding SelectedOpenOrder}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="70"/>
-                                    <DataGridTextColumn Header="数量" Binding="{Binding OrigQty, StringFormat=F4}" Width="70"/>
-                                    <DataGridTextColumn Header="已成交" Binding="{Binding ExecutedQty, StringFormat=F4}" Width="60"/>
-                                    <DataGridTextColumn Header="委托价格" Binding="{Binding Price, StringFormat=F4}" Width="70"/>
-                                    <DataGridTextColumn Header="方向" Binding="{Binding SideDisplay}" Width="50"/>
-                                    <DataGridTextColumn Header="类型" Binding="{Binding TypeDisplay}" Width="60"/>
-                                    <DataGridTextColumn Header="状态" Binding="{Binding StatusDisplay}" Width="60"/>
-                                    <DataGridTemplateColumn Header="仓位" Width="30">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding ReduceOnlyDisplay}" 
-                                                           HorizontalAlignment="Center"
-                                                           FontWeight="Bold"
-                                                           Foreground="Orange"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📋 开放委托" Style="{StaticResource HeaderStyle}"/>
+                                <Button Content="撤单" 
+                                        Command="{Binding CancelOpenOrderCommand}"
+                                        Margin="10,0,0,0" 
+                                        Padding="8,2"
+                                        Background="#FF6B6B" 
+                                        Foreground="White"
+                                        BorderThickness="0"
+                                        IsEnabled="{Binding SelectedOpenOrder, Converter={x:Static local:Converters.IsNotNullConverter}}"/>
+                            </StackPanel>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                                          HorizontalScrollBarVisibility="Auto"
+                                          MaxHeight="250">
+                                <DataGrid ItemsSource="{Binding OpenOrders}" 
+                                          SelectedItem="{Binding SelectedOpenOrder}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="70"/>
+                                        <DataGridTextColumn Header="数量" Binding="{Binding OrigQty, StringFormat=F4}" Width="70"/>
+                                        <DataGridTextColumn Header="已成交" Binding="{Binding ExecutedQty, StringFormat=F4}" Width="60"/>
+                                        <DataGridTextColumn Header="委托价格" Binding="{Binding Price, StringFormat=F4}" Width="70"/>
+                                        <DataGridTextColumn Header="方向" Binding="{Binding SideDisplay}" Width="50"/>
+                                        <DataGridTextColumn Header="类型" Binding="{Binding TypeDisplay}" Width="60"/>
+                                        <DataGridTextColumn Header="状态" Binding="{Binding StatusDisplay}" Width="60"/>
+                                        <DataGridTemplateColumn Header="仓位" Width="30">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding ReduceOnlyDisplay}" 
+                                                               HorizontalAlignment="Center"
+                                                               FontWeight="Bold"
+                                                               Foreground="Orange"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </ScrollViewer>
                         </StackPanel>
                     </Border>
                     
                     <!-- 条件单 -->
                     <Border Grid.Column="1" Style="{StaticResource SectionStyle}" Margin="5,0,0,0">
                         <StackPanel>
-                            <TextBlock Text="⏰ 条件单" Style="{StaticResource HeaderStyle}"/>
-                            <DataGrid ItemsSource="{Binding ConditionalOrders}" 
-                                      SelectedItem="{Binding SelectedConditionalOrder}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="70"/>
-                                    <DataGridTextColumn Header="数量" Binding="{Binding Quantity, StringFormat=F4}" Width="60"/>
-                                    <DataGridTextColumn Header="触发价" Binding="{Binding TriggerPrice, StringFormat=F4}" Width="70"/>
-                                    <DataGridTextColumn Header="委托价格" Binding="{Binding OrderPrice, StringFormat=F4}" Width="70"/>
-                                    <DataGridTextColumn Header="方向" Binding="{Binding SideDisplay}" Width="50"/>
-                                    <DataGridTextColumn Header="类型" Binding="{Binding TypeDisplay}" Width="60"/>
-                                    <DataGridTextColumn Header="状态" Binding="{Binding StatusDisplay}" Width="60"/>
-                                    <DataGridTemplateColumn Header="仓位" Width="30">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding ReduceOnlyDisplay}" 
-                                                           HorizontalAlignment="Center"
-                                                           FontWeight="Bold"
-                                                           Foreground="Orange"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⏰ 条件单" Style="{StaticResource HeaderStyle}"/>
+                                <Button Content="撤单" 
+                                        Command="{Binding CancelConditionalOrderCommand}"
+                                        Margin="10,0,0,0" 
+                                        Padding="8,2"
+                                        Background="#FF6B6B" 
+                                        Foreground="White"
+                                        BorderThickness="0"
+                                        IsEnabled="{Binding SelectedConditionalOrder, Converter={x:Static local:Converters.IsNotNullConverter}}"/>
+                            </StackPanel>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                                          HorizontalScrollBarVisibility="Auto"
+                                          MaxHeight="250">
+                                <DataGrid ItemsSource="{Binding ConditionalOrders}" 
+                                          SelectedItem="{Binding SelectedConditionalOrder}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="合约" Binding="{Binding Symbol}" Width="70"/>
+                                        <DataGridTextColumn Header="数量" Binding="{Binding Quantity, StringFormat=F4}" Width="60"/>
+                                        <DataGridTextColumn Header="触发价" Binding="{Binding TriggerPrice, StringFormat=F4}" Width="70"/>
+                                        <DataGridTextColumn Header="委托价格" Binding="{Binding OrderPrice, StringFormat=F4}" Width="70"/>
+                                        <DataGridTextColumn Header="方向" Binding="{Binding SideDisplay}" Width="50"/>
+                                        <DataGridTextColumn Header="类型" Binding="{Binding TypeDisplay}" Width="60"/>
+                                        <DataGridTextColumn Header="状态" Binding="{Binding StatusDisplay}" Width="60"/>
+                                        <DataGridTemplateColumn Header="仓位" Width="30">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding ReduceOnlyDisplay}" 
+                                                               HorizontalAlignment="Center"
+                                                               FontWeight="Bold"
+                                                               Foreground="Orange"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </ScrollViewer>
                         </StackPanel>
                     </Border>
         </Grid>
@@ -404,69 +440,69 @@
                              <TextBlock Text="⚙️ 下单设置" Style="{StaticResource HeaderStyle}"/>
                     
                     <!-- 合约信息 -->
-                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                  <TextBlock Text="合约:" VerticalAlignment="Center" Width="50" FontSize="12"/>
-                                 <TextBox Text="{Binding MarketSymbol}" Width="120" Height="25"/>
-                                 <Button Content="+" Command="{Binding AddCandidateSymbolCommand}" Margin="3,0,0,0" Width="25" Height="25"/>
+                                 <TextBox Text="{Binding MarketSymbol}" Width="120" Height="22"/>
+                                 <Button Content="+" Command="{Binding AddCandidateSymbolCommand}" Margin="3,0,0,0" Width="22" Height="22"/>
                     </StackPanel>
                     
                              <!-- 最新价格 -->
-                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                  <TextBlock Text="最新价:" VerticalAlignment="Center" Width="50" FontSize="12"/>
                                  <TextBlock Text="{Binding LatestPrice, StringFormat=F4}" FontWeight="Bold" Foreground="Red" FontSize="12"/>
                     </StackPanel>
                     
                                                                                            <!-- 杠杆设置 -->
-                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                      <TextBlock Text="杠杆:" VerticalAlignment="Center" Width="50" FontSize="12"/>
-                                     <TextBox Text="{Binding MarketLeverage}" Width="80" Height="25" ToolTip="杠杆倍数，可以手动输入或点击快捷按钮"/>
+                                     <TextBox Text="{Binding MarketLeverage}" Width="80" Height="22" ToolTip="杠杆倍数，可以手动输入或点击快捷按钮"/>
                                      <Button Content="1x" Command="{Binding SetLeverageCommand}" CommandParameter="1" 
-                                             Width="30" Height="20" FontSize="8" Margin="3,0,0,0" Background="#2196F3" Foreground="White"/>
+                                             Width="28" Height="18" FontSize="8" Margin="3,0,0,0" Background="#2196F3" Foreground="White"/>
                                      <Button Content="3x" Command="{Binding SetLeverageCommand}" CommandParameter="3" 
-                                             Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                             Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#4CAF50" Foreground="White"/>
                                      <Button Content="5x" Command="{Binding SetLeverageCommand}" CommandParameter="5" 
-                                             Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#FF9800" Foreground="White"/>
+                                             Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#FF9800" Foreground="White"/>
                                      <Button Content="10x" Command="{Binding SetLeverageCommand}" CommandParameter="10" 
-                                             Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#9C27B0" Foreground="White"/>
+                                             Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#9C27B0" Foreground="White"/>
                                      <Button Content="20x" Command="{Binding SetLeverageCommand}" CommandParameter="20" 
-                                             Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#F44336" Foreground="White"/>
+                                             Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#F44336" Foreground="White"/>
                                  </StackPanel>
                     
                              <!-- 数量设置 -->
-                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                  <TextBlock Text="数量:" VerticalAlignment="Center" Width="50" FontSize="12"/>
-                                 <TextBox Text="{Binding MarketQuantity}" Width="80" Height="25" ToolTip="数量可以手动编辑，双击合约后显示最小精度要求"/>
+                                 <TextBox Text="{Binding MarketQuantity}" Width="80" Height="22" ToolTip="数量可以手动编辑，双击合约后显示最小精度要求"/>
                                  <TextBlock Text="{Binding MinPrecisionInfo}" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="10" Foreground="#666"/>
                              </StackPanel>
                              
                              <!-- 止损比例 -->
-                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                  <TextBlock Text="止损比例:" VerticalAlignment="Center" Width="60" FontSize="12"/>
-                                 <TextBox Text="{Binding ConditionalStopLossRatio}" Width="60" Height="25"/>
+                                 <TextBox Text="{Binding ConditionalStopLossRatio}" Width="60" Height="22"/>
                                  <TextBlock Text="%" VerticalAlignment="Center" Margin="2,0,0,0" FontSize="12"/>
                                  <Button Content="5%" Command="{Binding SetStopLossRatioCommand}" CommandParameter="5" 
-                                         Width="30" Height="20" FontSize="8" Margin="3,0,0,0" Background="#2196F3" Foreground="White"/>
+                                         Width="28" Height="18" FontSize="8" Margin="3,0,0,0" Background="#2196F3" Foreground="White"/>
                                  <Button Content="10%" Command="{Binding SetStopLossRatioCommand}" CommandParameter="10" 
-                                         Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#2196F3" Foreground="White"/>
+                                         Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#2196F3" Foreground="White"/>
                                  <Button Content="20%" Command="{Binding SetStopLossRatioCommand}" CommandParameter="20" 
-                                         Width="30" Height="20" FontSize="8" Margin="2,0,0,0" Background="#2196F3" Foreground="White"/>
+                                         Width="28" Height="18" FontSize="8" Margin="2,0,0,0" Background="#2196F3" Foreground="White"/>
                     </StackPanel>
                     
                                                                                            <!-- 以损定量金额 -->
-                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                      <TextBlock Text="以损定量:" VerticalAlignment="Center" Width="60" FontSize="12"/>
-                                                                         <TextBox Text="{Binding RiskAmount, StringFormat=F0}" Width="80" Height="25" 
+                                                                         <TextBox Text="{Binding RiskAmount, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F0}" Width="80" Height="22" 
                                             ToolTip="请输入正整数金额，系统会自动四舍五入为整数"/>
                                                                           <Button Content="加倍" Command="{Binding AdjustRiskAmountCommand}" CommandParameter="double" 
-                                            Width="35" Height="20" FontSize="8" Margin="3,0,0,0" Background="#FF9800" Foreground="White"/>
+                                            Width="32" Height="18" FontSize="8" Margin="3,0,0,0" Background="#FF9800" Foreground="White"/>
                                      <Button Content="加半" Command="{Binding AdjustRiskAmountCommand}" CommandParameter="half" 
-                                            Width="35" Height="20" FontSize="8" Margin="2,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                            Width="32" Height="18" FontSize="8" Margin="2,0,0,0" Background="#4CAF50" Foreground="White"/>
                                      <Button Content="减半" Command="{Binding AdjustRiskAmountCommand}" CommandParameter="reduce_half" 
-                                            Width="35" Height="20" FontSize="8" Margin="2,0,0,0" Background="#F44336" Foreground="White"/>
+                                            Width="32" Height="18" FontSize="8" Margin="2,0,0,0" Background="#F44336" Foreground="White"/>
                                  </StackPanel>
                     
                              <!-- 方向选择 -->
-                             <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                  <RadioButton Content="买入" IsChecked="{Binding MarketSide, Converter={x:Static local:StringEqualsConverter.Instance}, ConverterParameter=BUY}" Margin="0,0,10,0" FontSize="12"/>
                                  <RadioButton Content="卖出" IsChecked="{Binding MarketSide, Converter={x:Static local:StringEqualsConverter.Instance}, ConverterParameter=SELL}" Margin="0,0,0,0" FontSize="12"/>
                              </StackPanel>
@@ -484,35 +520,38 @@
                          <Border Grid.Column="0" BorderBrush="#4CAF50" BorderThickness="2" CornerRadius="5" Padding="10" Margin="0,0,5,0">
                 <StackPanel>
                                  <!-- 市价下单 -->
-                                 <TextBlock Text="💰 市价下单" FontWeight="Bold" Foreground="#4CAF50" Margin="0,0,0,8" FontSize="14"/>
-                                 <TextBlock Text="使用左侧设置的下单参数" FontSize="10" Foreground="#666" Margin="0,0,0,15"/>
-                                                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                      <Button Content="🚀 市价下单" Command="{Binding PlaceMarketOrderCommand}" 
-                                              Height="30" FontSize="12" FontWeight="Bold"
-                                              Background="#4CAF50" Foreground="White"
-                                              Width="100"/>
-                                      <Button Content="💰 保盈加仓" Command="{Binding PlaceProfitOrderCommand}" 
-                                              Height="30" FontSize="12" FontWeight="Bold"
-                                              Background="#2196F3" Foreground="White"
-                                              Width="100" Margin="5,0,0,0"/>
-                                      <Button Content="🔴 平仓" Command="{Binding ClosePositionCommand}" 
-                                              Height="30" FontSize="12" FontWeight="Bold"
-                                              Background="#F44336" Foreground="White"
-                                              Width="100" Margin="5,0,0,0"/>
-                                      <Button Content="⚡ 一键全平" Command="{Binding CloseAllPositionsCommand}" 
-                                              Height="30" FontSize="12" FontWeight="Bold"
-                                              Background="#9C27B0" Foreground="White"
-                                              Width="100" Margin="5,0,0,0"/>
-                                  </StackPanel>
+                                 <TextBlock Text="💰 市价下单" FontWeight="Bold" Foreground="#4CAF50" Margin="0,0,0,5" FontSize="13"/>
+                                 <Grid Margin="0,0,0,0">
+                                     <Grid.ColumnDefinitions>
+                                         <ColumnDefinition Width="*"/>
+                                         <ColumnDefinition Width="*"/>
+                                     </Grid.ColumnDefinitions>
+                                     <Grid.RowDefinitions>
+                                         <RowDefinition Height="Auto"/>
+                                         <RowDefinition Height="Auto"/>
+                                     </Grid.RowDefinitions>
+                                     
+                                     <Button Grid.Row="0" Grid.Column="0" Content="🚀 市价下单" Command="{Binding PlaceMarketOrderCommand}" 
+                                             Height="25" FontSize="10" FontWeight="Bold" Margin="0,0,2,2"
+                                             Background="#4CAF50" Foreground="White"/>
+                                     <Button Grid.Row="0" Grid.Column="1" Content="💰 保本加仓" Command="{Binding PlaceProfitOrderCommand}" 
+                                             Height="25" FontSize="10" FontWeight="Bold" Margin="2,0,0,2"
+                                             Background="#2196F3" Foreground="White"/>
+                                     <Button Grid.Row="1" Grid.Column="0" Content="🔴 平仓" Command="{Binding ClosePositionCommand}" 
+                                             Height="25" FontSize="10" FontWeight="Bold" Margin="0,2,2,0"
+                                             Background="#F44336" Foreground="White"/>
+                                     <Button Grid.Row="1" Grid.Column="1" Content="⚡ 一键全平" Command="{Binding CloseAllPositionsCommand}" 
+                                             Height="25" FontSize="10" FontWeight="Bold" Margin="2,2,0,0"
+                                             Background="#9C27B0" Foreground="White"/>
+                                 </Grid>
                     
-                                 <Separator Margin="0,15,0,15" Background="#E0E0E0"/>
+                                 <Separator Margin="0,8,0,8" Background="#E0E0E0"/>
                                  
                                  <!-- 限价下单 -->
-                                 <TextBlock Text="🎯 限价下单" FontWeight="Bold" Foreground="#FF9800" Margin="0,0,0,8" FontSize="14"/>
-                                 <TextBlock Text="使用左侧设置的下单参数" FontSize="10" Foreground="#666" Margin="0,0,0,15"/>
+                                 <TextBlock Text="🎯 限价下单" FontWeight="Bold" Foreground="#FF9800" Margin="0,0,0,5" FontSize="13"/>
                                  
                                  <!-- 限价设置区域 -->
-                                 <Border BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,15" Background="#FFF8F0">
+                                 <Border BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="5" Margin="0,0,0,8" Background="#FFF8F0">
                                      <StackPanel>
                                          <TextBlock Text="限价设置" FontWeight="Bold" Foreground="#FF9800" FontSize="11" Margin="0,0,0,5"/>
                                          
@@ -574,15 +613,21 @@
             </Border>
 
                          <!-- 右侧：条件单 -->
-                         <Border Grid.Column="1" BorderBrush="#9C27B0" BorderThickness="2" CornerRadius="5" Padding="10" Margin="5,0,0,0">
+                         <Border Grid.Column="1" BorderBrush="#9C27B0" BorderThickness="2" CornerRadius="5" Padding="8" Margin="5,0,0,0">
                              <StackPanel>
-                                 <TextBlock Text="⏰ 条件单" FontWeight="Bold" Foreground="#9C27B0" Margin="0,0,0,8" FontSize="14"/>
-                                 <TextBlock Text="使用左侧设置的下单参数" FontSize="10" Foreground="#666" Margin="0,0,0,15"/>
+                                 <TextBlock Text="⏰ 条件单" FontWeight="Bold" Foreground="#9C27B0" Margin="0,0,0,5" FontSize="13"/>
                                  
-                                                                   <!-- 做多条件 -->
-                                  <Border BorderBrush="#4CAF50" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,10" Background="#F8FFF8">
+                                 <!-- 左右分列布局 -->
+                                 <Grid>
+                                     <Grid.ColumnDefinitions>
+                                         <ColumnDefinition Width="*"/>
+                                         <ColumnDefinition Width="*"/>
+                                     </Grid.ColumnDefinitions>
+                                 
+                                     <!-- 左列：做多条件 -->
+                                     <Border Grid.Column="0" BorderBrush="#4CAF50" BorderThickness="1" CornerRadius="3" Padding="5" Margin="0,0,3,0" Background="#F8FFF8">
                 <StackPanel>
-                                          <TextBlock Text="🟢 做多条件" FontWeight="Bold" Foreground="#4CAF50" FontSize="12" Margin="0,0,0,5"/>
+                                                                                      <TextBlock Text="🟢 做多条件" FontWeight="Bold" Foreground="#4CAF50" FontSize="11" Margin="0,0,0,3"/>
                                           
                                                                                                                                <!-- 突破价格设置 -->
                                           <StackPanel Margin="0,0,0,5">
@@ -601,13 +646,13 @@
                                                   <!-- 左侧：负数按钮 -->
                                                   <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,5,0">
                                                       <Button Content="-20%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="0.80" 
-                                                              Width="30" Height="18" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
                                                       <Button Content="-10%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="0.90" 
-                                                              Width="30" Height="18" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
                                                       <Button Content="-5%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="0.95" 
-                                                              Width="30" Height="18" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
                                                       <Button Content="-1%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="0.99" 
-                                                              Width="30" Height="18" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="0,0,1,0" Background="#F44336" Foreground="White"/>
                                                   </StackPanel>
                                                   
                                                   <!-- 中间：价格输入框 -->
@@ -621,13 +666,13 @@
                                                   <!-- 右侧：正数按钮 -->
                                                   <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="5,0,0,0">
                                                       <Button Content="+1%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="1.01" 
-                                                              Width="30" Height="18" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
                                                       <Button Content="+5%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="1.05" 
-                                                              Width="30" Height="18" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
                                                       <Button Content="+10%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="1.10" 
-                                                              Width="30" Height="18" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
                                                       <Button Content="+20%" Command="{Binding AdjustLongBreakoutPriceCommand}" CommandParameter="1.20" 
-                                                              Width="30" Height="18" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
+                                                              Width="25" Height="16" FontSize="7" Margin="1,0,0,0" Background="#4CAF50" Foreground="White"/>
                                                   </StackPanel>
                                               </Grid>
                                           </StackPanel>
@@ -638,11 +683,11 @@
                                                   Margin="0,5,0,0"/>
                     </StackPanel>
                                   </Border>
-                                  
-                                  <!-- 做空条件 -->
-                                  <Border BorderBrush="#F44336" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,0" Background="#FFF8F8">
+                                     
+                                     <!-- 右列：做空条件 -->
+                                     <Border Grid.Column="1" BorderBrush="#F44336" BorderThickness="1" CornerRadius="3" Padding="5" Margin="3,0,0,0" Background="#FFF8F8">
                                       <StackPanel>
-                                          <TextBlock Text="🔴 做空条件" FontWeight="Bold" Foreground="#F44336" FontSize="12" Margin="0,0,0,5"/>
+                                                                                      <TextBlock Text="🔴 做空条件" FontWeight="Bold" Foreground="#F44336" FontSize="11" Margin="0,0,0,3"/>
                                           
                                                                                                                                <!-- 跌破价格设置 -->
                                           <StackPanel Margin="0,0,0,5">
@@ -697,14 +742,16 @@
                                                   Background="#F44336" Foreground="White"
                                                   Margin="0,5,0,0"/>
                                       </StackPanel>
-                                  </Border>
-                </StackPanel>
-            </Border>
+                                     </Border>
+                                 </Grid>
+                             </StackPanel>
+                         </Border>
                      </Grid>
                  </Grid>
             </Grid>
         </Grid>
 
 
-    </Grid>
+        </Grid>
+    </ScrollViewer>
 </Window>

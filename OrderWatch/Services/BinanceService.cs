@@ -355,27 +355,34 @@ public class BinanceService : IBinanceService, IDisposable
                 {"symbol", request.Symbol},
                 {"side", request.Side},
                 {"type", request.Type},
-                {"quantity", request.Quantity.ToString("F8")},
+                {"quantity", request.Quantity.ToString("0.########")}, // 使用合适的精度格式
                 {"timestamp", timestamp.ToString()}
             };
 
             // 如果是限价单，添加价格参数
             if (request.Type == "LIMIT" && request.Price > 0)
             {
-                parameters.Add("price", request.Price.ToString("F8"));
+                parameters.Add("price", request.Price.ToString("0.########")); // 使用合适的精度格式
                 parameters.Add("timeInForce", "GTC"); // Good Till Canceled
             }
 
             // 如果是条件单，添加stopPrice参数
             if (request.Type == "STOP_MARKET" && request.StopPrice > 0)
             {
-                parameters.Add("stopPrice", request.StopPrice.ToString("F8"));
+                parameters.Add("stopPrice", request.StopPrice.ToString("0.########"));
+                parameters.Add("workingType", "CONTRACT_PRICE"); // 默认使用合约价格
             }
 
             // 如果是reduceOnly订单
             if (request.ReduceOnly)
             {
                 parameters.Add("reduceOnly", "true");
+            }
+
+            // 记录杠杆信息（用于调试）
+            if (request.Leverage.HasValue)
+            {
+                Console.WriteLine($"📊 订单杠杆设置: {request.Symbol} 杠杆={request.Leverage}x");
             }
 
             // 构建查询字符串
@@ -403,14 +410,137 @@ public class BinanceService : IBinanceService, IDisposable
             else
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"下单失败: {response.StatusCode} - {errorBody}");
+                Console.WriteLine($"❌ 下单失败: {response.StatusCode}");
+                Console.WriteLine($"📝 请求参数: {queryString}");
+                Console.WriteLine($"🔍 错误详情: {errorBody}");
+                
+                // 尝试解析具体的错误信息
+                try
+                {
+                    using var doc = JsonDocument.Parse(errorBody);
+                    if (doc.RootElement.TryGetProperty("msg", out var msgElement))
+                    {
+                        var errorMsg = msgElement.GetString();
+                        Console.WriteLine($"🚨 币安错误信息: {errorMsg}");
+                    }
+                }
+                catch
+                {
+                    // 忽略解析错误
+                }
+                
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"下单异常: {ex.Message}");
+            Console.WriteLine($"❌ 下单异常: {ex.Message}");
+            Console.WriteLine($"📋 异常详情: {ex}");
             return false;
+        }
+    }
+
+    public async Task<(bool success, long orderId)> PlaceOrderWithIdAsync(TradingRequest request)
+    {
+        try
+        {
+            // 检查API凭据
+            if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
+            {
+                Console.WriteLine("API凭据未设置，无法下单");
+                return (false, 0);
+            }
+
+            // 构建下单请求
+            var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+            var endpoint = "/fapi/v1/order";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // 构建请求参数（复用PlaceOrderAsync的逻辑）
+            var parameters = new Dictionary<string, string>
+            {
+                ["symbol"] = request.Symbol,
+                ["side"] = request.Side,
+                ["type"] = request.Type,
+                ["quantity"] = request.Quantity.ToString("0.########"),
+                ["timestamp"] = timestamp.ToString()
+            };
+
+            // 根据订单类型添加特定参数
+            if (request.Type == "LIMIT")
+            {
+                parameters.Add("price", request.Price.ToString("0.########"));
+                parameters.Add("timeInForce", "GTC");
+            }
+
+            if (request.Type == "STOP_MARKET" && request.StopPrice > 0)
+            {
+                parameters.Add("stopPrice", request.StopPrice.ToString("0.########"));
+                parameters.Add("workingType", "CONTRACT_PRICE");
+            }
+
+            if (request.ReduceOnly)
+            {
+                parameters.Add("reduceOnly", "true");
+            }
+
+            // 记录杠杆信息（用于调试）
+            if (request.Leverage.HasValue)
+            {
+                Console.WriteLine($"📊 订单杠杆设置: {request.Symbol} 杠杆={request.Leverage}x");
+            }
+
+            // 构建签名
+            var queryString = string.Join("&", parameters.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            var signature = GenerateSignature(queryString);
+            queryString += $"&signature={signature}";
+
+            // 发送POST请求
+            var fullUrl = $"{baseUrl}{endpoint}";
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            var content = new StringContent(queryString, Encoding.UTF8, "application/x-www-form-urlencoded");
+            var response = await httpClient.PostAsync(fullUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"下单成功: {request.Symbol} {request.Side} {request.Type} {request.Quantity}");
+                Console.WriteLine($"响应: {responseBody}");
+                
+                // 解析OrderId
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("orderId", out var orderIdElement))
+                    {
+                        var orderId = orderIdElement.GetInt64();
+                        Console.WriteLine($"✅ 解析到OrderId: {orderId}");
+                        return (true, orderId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ 解析OrderId失败: {ex.Message}");
+                }
+                
+                return (true, 0); // 成功但无OrderId
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"❌ 下单失败: {response.StatusCode}");
+                Console.WriteLine($"📝 请求参数: {queryString}");
+                Console.WriteLine($"🔍 错误详情: {errorBody}");
+                
+                return (false, 0);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ 下单异常: {ex.Message}");
+            return (false, 0);
         }
     }
 
@@ -418,14 +548,76 @@ public class BinanceService : IBinanceService, IDisposable
     {
         try
         {
-            // 临时实现：模拟撤单成功
-            await Task.Delay(100);
-            // Console.WriteLine($"撤单成功: {symbol} {orderId}");
-            return true;
+            // 检查API凭据
+            if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
+            {
+                Console.WriteLine("API凭据未设置，无法撤单");
+                return false;
+            }
+
+            // 构建撤单请求
+            var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+            var endpoint = "/fapi/v1/order";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // 构建请求参数
+            var parameters = new Dictionary<string, string>
+            {
+                {"symbol", symbol},
+                {"orderId", orderId.ToString()},
+                {"timestamp", timestamp.ToString()}
+            };
+
+            // 构建查询字符串
+            var queryString = string.Join("&", parameters.Select(p => $"{p.Key}={p.Value}"));
+            
+            // 生成签名
+            var signature = GenerateSignature(queryString);
+            queryString += $"&signature={signature}";
+
+            // 发送DELETE请求
+            var fullUrl = $"{baseUrl}{endpoint}?{queryString}";
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            var response = await httpClient.DeleteAsync(fullUrl);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"✅ 撤单成功: {symbol} 订单ID:{orderId}");
+                Console.WriteLine($"📄 响应: {responseBody}");
+                return true;
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"❌ 撤单失败: {response.StatusCode}");
+                Console.WriteLine($"📝 请求参数: {queryString}");
+                Console.WriteLine($"🔍 错误详情: {errorBody}");
+                
+                // 尝试解析具体的错误信息
+                try
+                {
+                    using var doc = JsonDocument.Parse(errorBody);
+                    if (doc.RootElement.TryGetProperty("msg", out var msgElement))
+                    {
+                        var errorMsg = msgElement.GetString();
+                        Console.WriteLine($"🚨 币安错误信息: {errorMsg}");
+                    }
+                }
+                catch
+                {
+                    // 忽略解析错误
+                }
+                
+                return false;
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Console.WriteLine($"撤单异常");
+            Console.WriteLine($"❌ 撤单异常: {ex.Message}");
+            Console.WriteLine($"📋 异常详情: {ex}");
             return false;
         }
     }
@@ -534,14 +726,57 @@ public class BinanceService : IBinanceService, IDisposable
     {
         try
         {
-            // 临时实现：模拟设置杠杆成功
-            await Task.Delay(100);
-            // Console.WriteLine($"设置杠杆成功: {symbol} {leverage}");
-            return true;
+            // 检查API凭据
+            if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
+            {
+                Console.WriteLine($"设置杠杆(模拟): {symbol} {leverage}x");
+                return true;
+            }
+
+            // 构建设置杠杆请求
+            var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+            var endpoint = "/fapi/v1/leverage";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // 构建请求参数
+            var queryString = $"symbol={symbol}&leverage={leverage}&timestamp={timestamp}";
+            
+            // 生成签名
+            var signature = GenerateSignature(queryString);
+            queryString += $"&signature={signature}";
+
+            // 发送POST请求
+            var fullUrl = $"{baseUrl}{endpoint}";
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("symbol", symbol),
+                new KeyValuePair<string, string>("leverage", leverage.ToString()),
+                new KeyValuePair<string, string>("timestamp", timestamp.ToString()),
+                new KeyValuePair<string, string>("signature", signature)
+            });
+
+            var response = await httpClient.PostAsync(fullUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"✅ 设置杠杆成功: {symbol} {leverage}x");
+                Console.WriteLine($"响应: {responseBody}");
+                return true;
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"❌ 设置杠杆失败: {response.StatusCode} - {errorBody}");
+                return false;
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Console.WriteLine($"设置杠杆异常");
+            Console.WriteLine($"❌ 设置杠杆异常: {ex.Message}");
             return false;
         }
     }
