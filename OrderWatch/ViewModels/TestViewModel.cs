@@ -434,7 +434,15 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
-                // 首先设置杠杆
+                // 首先设置保证金模式为逐仓
+                Console.WriteLine($"🔧 设置保证金模式: {MarketSymbol} ISOLATED(逐仓)");
+                bool marginTypeSet = await _binanceService.SetMarginTypeAsync(MarketSymbol, "ISOLATED");
+                if (!marginTypeSet)
+                {
+                    Console.WriteLine($"⚠️ 设置保证金模式失败，继续下单");
+                }
+
+                // 然后设置杠杆
                 Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
@@ -451,7 +459,8 @@ public partial class TestViewModel : ObservableObject
                     Quantity = MarketQuantity,
                     Price = 0, // 市价单不需要价格
                     ReduceOnly = false,
-                    Leverage = (int)MarketLeverage
+                    Leverage = (int)MarketLeverage,
+                    MarginType = "ISOLATED" // 强制使用逐仓模式
                 };
 
                 // 调用币安API下单
@@ -528,7 +537,15 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
-                // 首先设置杠杆
+                // 首先设置保证金模式为逐仓
+                Console.WriteLine($"🔧 设置保证金模式: {LimitSymbol} ISOLATED(逐仓)");
+                bool marginTypeSet = await _binanceService.SetMarginTypeAsync(LimitSymbol, "ISOLATED");
+                if (!marginTypeSet)
+                {
+                    Console.WriteLine($"⚠️ 设置保证金模式失败，继续下单");
+                }
+
+                // 然后设置杠杆
                 Console.WriteLine($"🔧 设置杠杆: {LimitSymbol} {LimitLeverage}x");
                 bool leverageSet = await _binanceService.SetLeverageAsync(LimitSymbol, (int)LimitLeverage);
                 if (!leverageSet)
@@ -555,7 +572,8 @@ public partial class TestViewModel : ObservableObject
                     Quantity = adjustedQuantity,
                     Price = adjustedPrice,
                     ReduceOnly = false,
-                    Leverage = (int)LimitLeverage
+                    Leverage = (int)LimitLeverage,
+                    MarginType = "ISOLATED" // 强制使用逐仓模式
                 };
 
                 // 调用币安API下单
@@ -651,7 +669,15 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
-                // 首先设置杠杆
+                // 首先设置保证金模式为逐仓
+                Console.WriteLine($"🔧 设置保证金模式: {MarketSymbol} ISOLATED(逐仓)");
+                bool marginTypeSet = await _binanceService.SetMarginTypeAsync(MarketSymbol, "ISOLATED");
+                if (!marginTypeSet)
+                {
+                    Console.WriteLine($"⚠️ 设置保证金模式失败，继续下单");
+                }
+
+                // 然后设置杠杆
                 Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
@@ -679,7 +705,8 @@ public partial class TestViewModel : ObservableObject
                     Price = 0, // 条件单触发后以市价成交
                     StopPrice = adjustedStopPrice, // 触发价格
                     ReduceOnly = false,
-                    Leverage = (int)MarketLeverage
+                    Leverage = (int)MarketLeverage,
+                    MarginType = "ISOLATED" // 强制使用逐仓模式
                 };
 
                 // 调试信息：打印请求详情
@@ -811,7 +838,15 @@ public partial class TestViewModel : ObservableObject
                     return;
                 }
 
-                // 首先设置杠杆
+                // 首先设置保证金模式为逐仓
+                Console.WriteLine($"🔧 设置保证金模式: {MarketSymbol} ISOLATED(逐仓)");
+                bool marginTypeSet = await _binanceService.SetMarginTypeAsync(MarketSymbol, "ISOLATED");
+                if (!marginTypeSet)
+                {
+                    Console.WriteLine($"⚠️ 设置保证金模式失败，继续下单");
+                }
+
+                // 然后设置杠杆
                 Console.WriteLine($"🔧 设置杠杆: {MarketSymbol} {MarketLeverage}x");
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
@@ -839,7 +874,8 @@ public partial class TestViewModel : ObservableObject
                     Price = 0, // 条件单触发后以市价成交
                     StopPrice = adjustedStopPrice, // 触发价格
                     ReduceOnly = false,
-                    Leverage = (int)MarketLeverage
+                    Leverage = (int)MarketLeverage,
+                    MarginType = "ISOLATED" // 强制使用逐仓模式
                 };
 
                 // 调用币安API下条件单，获取OrderId
@@ -2668,7 +2704,8 @@ public partial class TestViewModel : ObservableObject
                 Price = 0, // STOP_MARKET 触发后以市价成交
                 StopPrice = adjustedStopPrice,
                 ReduceOnly = true, // 重要：设置为 ReduceOnly，只能平仓
-                Leverage = (int)MarketLeverage // 使用当前设置的杠杆
+                Leverage = (int)MarketLeverage, // 使用当前设置的杠杆
+                MarginType = "ISOLATED" // 强制使用逐仓模式
             };
 
              // 发送止损单

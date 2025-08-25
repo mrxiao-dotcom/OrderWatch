@@ -29,20 +29,24 @@
     <None Update="README.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="version.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="..\version.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>version.json</Link>
     </None>
   </ItemGroup>
 
   <!-- 编译前自动递增版本号 -->
   <Target Name="IncrementVersionNumber" BeforeTargets="BeforeBuild">
-    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File &quot;$(ProjectDir)Scripts\IncrementVersion.ps1&quot; -ProjectDir &quot;$(ProjectDir)&quot;" 
-          ContinueOnError="true" 
-          IgnoreExitCode="true"
-          ConsoleToMSBuild="true" />
+    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File &quot;$(ProjectDir)Scripts\IncrementVersion.ps1&quot; -ProjectDir &quot;$(ProjectDir)&quot;" ContinueOnError="true" IgnoreExitCode="true" ConsoleToMSBuild="true" />
+  </Target>
+
+  <!-- 编译后复制根目录版本文件 -->
+  <Target Name="CopyVersionFile" AfterTargets="Build">
+    <Copy SourceFiles="..\version.json" DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" ContinueOnError="true" />
+    <Message Text="已复制版本文件到输出目录: $(OutputPath)" Importance="high" />
   </Target>
 
 </Project>

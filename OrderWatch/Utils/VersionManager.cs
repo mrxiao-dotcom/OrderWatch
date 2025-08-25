@@ -9,8 +9,51 @@ namespace OrderWatch.Utils;
 /// </summary>
 public static class VersionManager
 {
-    private static readonly string VersionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.json");
+    private static readonly string VersionFilePath = GetVersionFilePath();
     private static string? _currentVersion;
+
+    /// <summary>
+    /// 获取版本文件路径，优先从项目根目录读取
+    /// </summary>
+    private static string GetVersionFilePath()
+    {
+        // 尝试多个可能的路径
+        var possiblePaths = new[]
+        {
+            // 1. 项目根目录 (开发时)
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "version.json"),
+            // 2. 解决方案根目录 (开发时)
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "version.json"),
+            // 3. 运行目录 (发布时)
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.json"),
+            // 4. 当前工作目录
+            Path.Combine(Directory.GetCurrentDirectory(), "version.json"),
+            // 5. 上级目录
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "version.json")
+        };
+
+        foreach (var path in possiblePaths)
+        {
+            try
+            {
+                var normalizedPath = Path.GetFullPath(path);
+                if (File.Exists(normalizedPath))
+                {
+                    Console.WriteLine($"✅ 找到版本文件: {normalizedPath}");
+                    return normalizedPath;
+                }
+            }
+            catch
+            {
+                // 忽略路径解析错误
+            }
+        }
+
+        // 如果都没找到，返回默认路径（运行目录）
+        var defaultPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.json");
+        Console.WriteLine($"⚠️ 使用默认版本文件路径: {defaultPath}");
+        return defaultPath;
+    }
 
     /// <summary>
     /// 获取当前版本号
@@ -103,5 +146,6 @@ public static class VersionManager
     private class VersionData
     {
         public string Version { get; set; } = "0.01";
+        public string? lastUpdate { get; set; }
     }
 }

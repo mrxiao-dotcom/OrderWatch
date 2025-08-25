@@ -379,10 +379,14 @@ public class BinanceService : IBinanceService, IDisposable
                 parameters.Add("reduceOnly", "true");
             }
 
-            // 记录杠杆信息（用于调试）
+            // 记录杠杆和保证金模式信息（用于调试）
             if (request.Leverage.HasValue)
             {
                 Console.WriteLine($"📊 订单杠杆设置: {request.Symbol} 杠杆={request.Leverage}x");
+            }
+            if (!string.IsNullOrEmpty(request.MarginType))
+            {
+                Console.WriteLine($"📊 订单保证金模式: {request.Symbol} 模式={request.MarginType}");
             }
 
             // 构建查询字符串
@@ -484,10 +488,14 @@ public class BinanceService : IBinanceService, IDisposable
                 parameters.Add("reduceOnly", "true");
             }
 
-            // 记录杠杆信息（用于调试）
+            // 记录杠杆和保证金模式信息（用于调试）
             if (request.Leverage.HasValue)
             {
                 Console.WriteLine($"📊 订单杠杆设置: {request.Symbol} 杠杆={request.Leverage}x");
+            }
+            if (!string.IsNullOrEmpty(request.MarginType))
+            {
+                Console.WriteLine($"📊 订单保证金模式: {request.Symbol} 模式={request.MarginType}");
             }
 
             // 构建签名
@@ -785,14 +793,57 @@ public class BinanceService : IBinanceService, IDisposable
     {
         try
         {
-            // 临时实现：模拟设置保证金类型成功
-            await Task.Delay(100);
-            // Console.WriteLine($"设置保证金类型成功: {symbol} {leverage}");
-            return true;
+            // 检查API凭据
+            if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
+            {
+                Console.WriteLine($"设置保证金模式(模拟): {symbol} {marginType}");
+                return true;
+            }
+
+            // 构建设置保证金模式请求
+            var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+            var endpoint = "/fapi/v1/marginType";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // 构建请求参数
+            var queryString = $"symbol={symbol}&marginType={marginType}&timestamp={timestamp}";
+            
+            // 生成签名
+            var signature = GenerateSignature(queryString);
+            queryString += $"&signature={signature}";
+
+            // 发送POST请求
+            var fullUrl = $"{baseUrl}{endpoint}";
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("symbol", symbol),
+                new KeyValuePair<string, string>("marginType", marginType),
+                new KeyValuePair<string, string>("timestamp", timestamp.ToString()),
+                new KeyValuePair<string, string>("signature", signature)
+            });
+
+            var response = await httpClient.PostAsync(fullUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"✅ 设置保证金模式成功: {symbol} {marginType}");
+                Console.WriteLine($"响应: {responseBody}");
+                return true;
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"❌ 设置保证金模式失败: {response.StatusCode} - {errorBody}");
+                return false;
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Console.WriteLine($"设置保证金类型异常");
+            Console.WriteLine($"❌ 设置保证金模式异常: {ex.Message}");
             return false;
         }
     }

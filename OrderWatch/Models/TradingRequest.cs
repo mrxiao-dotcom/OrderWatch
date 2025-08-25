@@ -17,4 +17,5 @@ public class TradingRequest
     public decimal? CallbackRate { get; set; }
     public string? PriceProtect { get; set; }
     public int? Leverage { get; set; }
+    public string MarginType { get; set; } = "ISOLATED"; // 默认逐仓模式
 }
