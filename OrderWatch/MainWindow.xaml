@@ -292,6 +292,28 @@
                                     <DataGridTextColumn Header="进场价" Binding="{Binding EntryPrice, StringFormat=F4}" Width="80"/>
                                     <DataGridTextColumn Header="方向" Binding="{Binding PositionSideDisplay}" Width="60"/>
                                     <DataGridTextColumn Header="杠杆" Binding="{Binding Leverage}" Width="50"/>
+                                    <DataGridTemplateColumn Header="保证金" Width="60">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding MarginTypeDisplay}" 
+                                                          HorizontalAlignment="Center"
+                                                          FontWeight="Bold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding MarginType}" Value="ISOLATED">
+                                                                    <Setter Property="Foreground" Value="Green"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding MarginType}" Value="CROSS">
+                                                                    <Setter Property="Foreground" Value="Orange"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="最新市值" Binding="{Binding Notional, StringFormat=F2}" Width="80"/>
                                     <DataGridTemplateColumn Header="浮动盈亏" Width="80">
                                         <DataGridTemplateColumn.CellTemplate>
@@ -353,6 +375,7 @@
                                         <DataGridTextColumn Header="数量" Binding="{Binding OrigQty, StringFormat=F4}" Width="70"/>
                                         <DataGridTextColumn Header="已成交" Binding="{Binding ExecutedQty, StringFormat=F4}" Width="60"/>
                                         <DataGridTextColumn Header="委托价格" Binding="{Binding Price, StringFormat=F4}" Width="70"/>
+                                        <DataGridTextColumn Header="止损价" Binding="{Binding StopPriceDisplay}" Width="70"/>
                                         <DataGridTextColumn Header="方向" Binding="{Binding SideDisplay}" Width="50"/>
                                         <DataGridTextColumn Header="类型" Binding="{Binding TypeDisplay}" Width="60"/>
                                         <DataGridTextColumn Header="状态" Binding="{Binding StatusDisplay}" Width="60"/>
@@ -471,7 +494,7 @@
                              <!-- 数量设置 -->
                              <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                  <TextBlock Text="数量:" VerticalAlignment="Center" Width="50" FontSize="12"/>
-                                 <TextBox Text="{Binding MarketQuantity}" Width="80" Height="22" ToolTip="数量可以手动编辑，双击合约后显示最小精度要求"/>
+                                 <TextBox Text="{Binding MarketQuantity, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="80" Height="22" ToolTip="数量可以手动编辑，双击合约后显示最小精度要求" Name="MarketQuantityTextBox" LostFocus="MarketQuantityTextBox_LostFocus"/>
                                  <TextBlock Text="{Binding MinPrecisionInfo}" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="10" Foreground="#666"/>
                              </StackPanel>
                              

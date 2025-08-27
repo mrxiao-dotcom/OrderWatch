@@ -215,6 +215,11 @@ public class OrderInfo : INotifyPropertyChanged
     }
 
     public string ReduceOnlyDisplay => ReduceOnly ? "✓" : "";
+    
+    /// <summary>
+    /// 格式化显示止损价，当为0时显示为空
+    /// </summary>
+    public string StopPriceDisplay => StopPrice > 0 ? StopPrice.ToString("F4") : "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

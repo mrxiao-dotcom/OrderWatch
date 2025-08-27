@@ -28,6 +28,7 @@ public interface IBinanceService
     // 配置相关
     Task<bool> SetLeverageAsync(string symbol, int leverage);
     Task<bool> SetMarginTypeAsync(string symbol, string marginType);
+    Task<(int leverage, string marginType)> GetPositionSettingsAsync(string symbol);
     
     // 连接管理
     Task<bool> TestConnectionAsync();

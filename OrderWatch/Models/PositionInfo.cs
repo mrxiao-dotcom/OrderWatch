@@ -12,6 +12,7 @@ public class PositionInfo : INotifyPropertyChanged
     private decimal _unRealizedProfit;
     private decimal _liquidationPrice;
     private decimal _leverage;
+    private string _marginType = string.Empty;
     private decimal _notional;
     private int _orderCount;
     private int _conditionalOrderCount;
@@ -128,6 +129,20 @@ public class PositionInfo : INotifyPropertyChanged
         }
     }
 
+    public string MarginType
+    {
+        get => _marginType;
+        set
+        {
+            if (_marginType != value)
+            {
+                _marginType = value;
+                OnPropertyChanged(nameof(MarginType));
+                OnPropertyChanged(nameof(MarginTypeDisplay));
+            }
+        }
+    }
+
     public decimal Notional
     {
         get => _notional;
@@ -174,6 +189,13 @@ public class PositionInfo : INotifyPropertyChanged
     public bool IsShort => PositionAmt < 0;
     public decimal PriceChangePercent => EntryPrice > 0 ? (MarkPrice - EntryPrice) / EntryPrice * 100 : 0;
     public decimal UnRealizedProfitPercent => Notional > 0 ? UnRealizedProfit / Notional * 100 : 0;
+    
+    public string MarginTypeDisplay => MarginType?.ToUpper() switch
+    {
+        "ISOLATED" => "逐仓",
+        "CROSS" => "全仓",
+        _ => MarginType ?? "未知"
+    };
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

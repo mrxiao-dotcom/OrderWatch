@@ -18,6 +18,7 @@ public partial class TestViewModel : ObservableObject
     private readonly ILogService? _logService;
     private readonly IBinanceService? _binanceService;
     private readonly IBinanceSymbolService? _binanceSymbolService;
+    private readonly ITradeHistoryService? _tradeHistoryService;
     
     // 自动刷新相关
     private System.Threading.Timer? _refreshTimer;
@@ -35,6 +36,7 @@ public partial class TestViewModel : ObservableObject
             _logService = new LogService();
             _binanceService = new BinanceService();
             _binanceSymbolService = new BinanceSymbolService();
+            _tradeHistoryService = new TradeHistoryService();
         }
         catch (Exception ex)
         {
@@ -146,11 +148,49 @@ public partial class TestViewModel : ObservableObject
     [ObservableProperty]
     private string _marketSymbol = "";
 
-    [ObservableProperty]
     private decimal _marketQuantity = 0;
 
-    [ObservableProperty]
+    public decimal MarketQuantity
+    {
+        get => _marketQuantity;
+        set
+        {
+            if (SetProperty(ref _marketQuantity, value))
+            {
+                // 当数量手动更改时，异步调整精度
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(50); // 短暂延迟确保UI更新完成
+                        await AdjustMarketQuantityToPrecisionAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"🔴 调整市价数量精度失败: {ex.Message}");
+                    }
+                });
+                
+                Console.WriteLine($"📊 市价数量更新: {value} → 将进行精度调整");
+            }
+        }
+    }
+
     private string _marketSide = "BUY";
+    
+    public string MarketSide
+    {
+        get => _marketSide;
+        set
+        {
+            if (SetProperty(ref _marketSide, value))
+            {
+                // 当市价方向变化时，自动同步到限价方向
+                LimitSide = value;
+                Console.WriteLine($"📊 方向同步: MarketSide={value} → LimitSide={value}");
+            }
+        }
+    }
 
     [ObservableProperty]
     private decimal _marketLeverage = 10;
@@ -159,8 +199,33 @@ public partial class TestViewModel : ObservableObject
     [ObservableProperty]
     private string _limitSymbol = "";
 
-    [ObservableProperty]
     private decimal _limitQuantity = 0;
+
+    public decimal LimitQuantity
+    {
+        get => _limitQuantity;
+        set
+        {
+            if (SetProperty(ref _limitQuantity, value))
+            {
+                // 当限价数量手动更改时，异步调整精度
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(50); // 短暂延迟确保UI更新完成
+                        await AdjustLimitQuantityToPrecisionAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"🔴 调整限价数量精度失败: {ex.Message}");
+                    }
+                });
+                
+                Console.WriteLine($"🎯 限价数量更新: {value} → 将进行精度调整");
+            }
+        }
+    }
 
     [ObservableProperty]
     private decimal _limitPrice = 0;
@@ -447,7 +512,10 @@ public partial class TestViewModel : ObservableObject
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
                 {
-                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                    var leverageErrorMsg = $"⚠️ 杠杆设置失败：{MarketSymbol} 不支持 {MarketLeverage}x 杠杆\n\n可能的原因：\n• 该合约不支持所选杠杆倍数\n• 当前持仓状态限制杠杆调整\n• 账户风险等级限制\n\n建议：\n• 尝试使用更低的杠杆倍数（如1x, 3x, 5x）\n• 检查该合约支持的杠杆范围\n• 清空持仓后重新设置";
+                    
+                    Console.WriteLine($"⚠️ 设置杠杆失败，但继续下单尝试");
+                    MessageBox.Show(leverageErrorMsg, "杠杆设置失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
                 // 构建下单请求
@@ -468,20 +536,46 @@ public partial class TestViewModel : ObservableObject
 
                 if (success)
                 {
+                    // 验证杠杆和保证金模式设置是否生效
+                    Console.WriteLine($"🔍 验证市价下单后的设置...");
+                    var (actualLeverage, actualMarginType) = await _binanceService.GetPositionSettingsAsync(MarketSymbol);
+                    
+                    string settingsInfo = "";
+                    if (actualLeverage != (int)MarketLeverage)
+                    {
+                        Console.WriteLine($"⚠️ 杠杆设置不一致! 预期: {MarketLeverage}x, 实际: {actualLeverage}x");
+                        settingsInfo += $"\n⚠️ 杠杆: 预期{MarketLeverage}x → 实际{actualLeverage}x";
+                    }
+                    
+                    if (actualMarginType != "ISOLATED")
+                    {
+                        Console.WriteLine($"⚠️ 保证金模式设置不一致! 预期: ISOLATED, 实际: {actualMarginType}");
+                        settingsInfo += $"\n⚠️ 保证金模式: 预期逐仓 → 实际{actualMarginType}";
+                    }
+                    
                     // 市价单立即成交，不添加到委托列表
-                    StatusMessage = $"✅ 市价下单成功 - {MarketSymbol} {MarketSide} {MarketQuantity}";
+                    StatusMessage = $"✅ 市价下单成功 - {MarketSymbol} {MarketSide} {MarketQuantity} (杠杆: {actualLeverage}x, 模式: {actualMarginType})";
                     
                     // 自动创建止损委托单
                     await CreateStopLossOrderAsync(MarketSymbol, MarketSide, MarketQuantity);
                     
-                    MessageBox.Show($"✅ 市价下单执行成功！\n\n合约: {MarketSymbol}\n方向: {MarketSide}\n数量: {MarketQuantity}\n\n✅ 已自动创建止损委托单", 
-                                  "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var messageContent = $"✅ 市价下单执行成功！\n\n合约: {MarketSymbol}\n方向: {MarketSide}\n数量: {MarketQuantity}\n杠杆: {actualLeverage}x\n保证金模式: {actualMarginType}\n\n✅ 已自动创建止损委托单";
+                    if (!string.IsNullOrEmpty(settingsInfo))
+                    {
+                        messageContent += $"\n\n设置提醒:{settingsInfo}";
+                    }
+                    
+                    MessageBox.Show(messageContent, "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // 记录交易历史
                     if (_logService != null)
                     {
-                        await _logService.LogInfoAsync($"市价下单成功: {MarketSymbol} {MarketSide} {MarketQuantity}", "交易");
+                        await _logService.LogInfoAsync($"市价下单成功: {MarketSymbol} {MarketSide} {MarketQuantity} (杠杆: {actualLeverage}x, 模式: {actualMarginType})", "交易");
                     }
+                    
+                    // 记录到交易历史
+                    await RecordTradeHistoryAsync(MarketSymbol, "市价下单", MarketSide, null, MarketQuantity, 
+                        $"成功 (杠杆: {actualLeverage}x, 模式: {actualMarginType})", "市价下单");
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
@@ -490,6 +584,21 @@ public partial class TestViewModel : ObservableObject
                 {
                     StatusMessage = $"❌ 市价下单失败 - {MarketSymbol}";
                     MessageBox.Show("❌ 市价下单失败！请检查网络连接和API权限。", "下单失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    
+                    // 记录失败的交易历史
+                    if (_tradeHistoryService != null)
+                    {
+                        var tradeHistory = new TradeHistory
+                        {
+                            Symbol = MarketSymbol,
+                            Action = "市价下单",
+                            Side = MarketSide,
+                            Quantity = MarketQuantity,
+                            Result = "失败 - API调用失败",
+                            Category = "市价下单"
+                        };
+                        await _tradeHistoryService.AddTradeHistoryAsync(tradeHistory);
+                    }
                 }
             }
             catch (Exception ex)
@@ -500,6 +609,21 @@ public partial class TestViewModel : ObservableObject
                 if (_logService != null)
                 {
                     await _logService.LogErrorAsync("市价下单异常", ex, "交易");
+                }
+                
+                // 记录异常的交易历史
+                if (_tradeHistoryService != null)
+                {
+                    var tradeHistory = new TradeHistory
+                    {
+                        Symbol = MarketSymbol,
+                        Action = "市价下单",
+                        Side = MarketSide,
+                        Quantity = MarketQuantity,
+                        Result = $"异常 - {ex.Message}",
+                        Category = "市价下单"
+                    };
+                    await _tradeHistoryService.AddTradeHistoryAsync(tradeHistory);
                 }
             }
         }
@@ -550,7 +674,10 @@ public partial class TestViewModel : ObservableObject
                 bool leverageSet = await _binanceService.SetLeverageAsync(LimitSymbol, (int)LimitLeverage);
                 if (!leverageSet)
                 {
-                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                    var leverageErrorMsg = $"⚠️ 杠杆设置失败：{LimitSymbol} 不支持 {LimitLeverage}x 杠杆\n\n可能的原因：\n• 该合约不支持所选杠杆倍数\n• 当前持仓状态限制杠杆调整\n• 账户风险等级限制\n\n建议：\n• 尝试使用更低的杠杆倍数（如1x, 3x, 5x）\n• 检查该合约支持的杠杆范围\n• 清空持仓后重新设置";
+                    
+                    Console.WriteLine($"⚠️ 设置杠杆失败，但继续下单尝试");
+                    MessageBox.Show(leverageErrorMsg, "杠杆设置失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
                 // 根据合约精度调整价格和数量
@@ -561,6 +688,25 @@ public partial class TestViewModel : ObservableObject
                 {
                     adjustedPrice = await _binanceSymbolService.AdjustPriceToValidAsync(LimitSymbol, LimitPrice);
                     adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(LimitSymbol, LimitQuantity);
+                }
+                
+                // 新合约特殊精度处理
+                if (!string.IsNullOrEmpty(LimitSymbol))
+                {
+                    var newContractPrice = AdjustPriceForNewContracts(adjustedPrice, LimitSymbol);
+                    var newContractQuantity = AdjustQuantityForNewContracts(adjustedQuantity, LimitSymbol);
+                    
+                    if (newContractPrice != adjustedPrice)
+                    {
+                        Console.WriteLine($"🆕 限价价格新合约调整: {adjustedPrice:F8} → {newContractPrice:F8}");
+                        adjustedPrice = newContractPrice;
+                    }
+                    
+                    if (newContractQuantity != adjustedQuantity)
+                    {
+                        Console.WriteLine($"🆕 限价数量新合约调整: {adjustedQuantity:F8} → {newContractQuantity:F8}");
+                        adjustedQuantity = newContractQuantity;
+                    }
                 }
 
                 // 构建限价下单请求
@@ -576,12 +722,77 @@ public partial class TestViewModel : ObservableObject
                     MarginType = "ISOLATED" // 强制使用逐仓模式
                 };
 
+                // 记录精度调整详情到日志
+                if (_logService != null)
+                {
+                    await _logService.LogInfoAsync($"🔍 限价下单精度调整详情: 原始数量={LimitQuantity} → 调整后={adjustedQuantity}, 原始价格={LimitPrice} → 调整后={adjustedPrice}", "限价下单");
+                    await _logService.LogInfoAsync($"🔍 限价下单请求详情: Symbol={tradingRequest.Symbol}, Side={tradingRequest.Side}, Type={tradingRequest.Type}, Quantity={tradingRequest.Quantity}, Price={tradingRequest.Price}, Leverage={tradingRequest.Leverage}", "限价下单");
+                    
+                    // 检查SOMIUSDT特殊要求
+                    if (LimitSymbol.ToUpper().Contains("SOMI"))
+                    {
+                        var isInteger = adjustedQuantity == Math.Floor(adjustedQuantity);
+                        await _logService.LogInfoAsync($"🪙 SOMI币种检查: 要求数量为整数, 价格5位小数 | 实际: 数量={adjustedQuantity} (是否整数: {isInteger}), 价格={adjustedPrice:F5}", "限价下单");
+                        
+                        if (!isInteger)
+                        {
+                            await _logService.LogWarningAsync($"⚠️ SOMI币种数量不是整数，可能导致下单失败: {adjustedQuantity}", "限价下单");
+                        }
+                    }
+                }
+                
+                // 调试信息：打印精度调整前后对比
+                Console.WriteLine($"🔍 限价下单精度调整详情:");
+                Console.WriteLine($"   原始数量: {LimitQuantity} → 调整后: {adjustedQuantity}");
+                Console.WriteLine($"   原始价格: {LimitPrice} → 调整后: {adjustedPrice}");
+                
+                // 调试信息：打印请求详情
+                Console.WriteLine($"🔍 限价下单请求详情:");
+                Console.WriteLine($"   Symbol: {tradingRequest.Symbol}");
+                Console.WriteLine($"   Side: {tradingRequest.Side}");
+                Console.WriteLine($"   Type: {tradingRequest.Type}");
+                Console.WriteLine($"   Quantity: {tradingRequest.Quantity}");
+                Console.WriteLine($"   Price: {tradingRequest.Price}");
+                Console.WriteLine($"   ReduceOnly: {tradingRequest.ReduceOnly}");
+                Console.WriteLine($"   Leverage: {tradingRequest.Leverage}");
+                Console.WriteLine($"   MarginType: {tradingRequest.MarginType}");
+                
+                // 检查SOMIUSDT特殊要求
+                if (LimitSymbol.ToUpper().Contains("SOMI"))
+                {
+                    Console.WriteLine($"🪙 SOMI币种检查:");
+                    Console.WriteLine($"   要求: 数量必须为整数, 价格保留5位小数");
+                    Console.WriteLine($"   实际: 数量={adjustedQuantity} (是否整数: {adjustedQuantity == Math.Floor(adjustedQuantity)}), 价格={adjustedPrice:F5}");
+                    
+                    if (adjustedQuantity != Math.Floor(adjustedQuantity))
+                    {
+                        Console.WriteLine($"⚠️ 警告: SOMI币种数量不是整数，可能导致下单失败");
+                    }
+                }
+
                 // 调用币安API下单
                 bool success = await _binanceService.PlaceOrderAsync(tradingRequest);
 
                 if (success)
                 {
-                    StatusMessage = $"✅ 限价下单成功 - {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice}";
+                    // 验证杠杆和保证金模式设置是否生效
+                    Console.WriteLine($"🔍 验证限价下单后的设置...");
+                    var (actualLeverage, actualMarginType) = await _binanceService.GetPositionSettingsAsync(LimitSymbol);
+                    
+                    string settingsInfo = "";
+                    if (actualLeverage != (int)LimitLeverage)
+                    {
+                        Console.WriteLine($"⚠️ 杠杆设置不一致! 预期: {LimitLeverage}x, 实际: {actualLeverage}x");
+                        settingsInfo += $"\n⚠️ 杠杆: 预期{LimitLeverage}x → 实际{actualLeverage}x";
+                    }
+                    
+                    if (actualMarginType != "ISOLATED")
+                    {
+                        Console.WriteLine($"⚠️ 保证金模式设置不一致! 预期: ISOLATED, 实际: {actualMarginType}");
+                        settingsInfo += $"\n⚠️ 保证金模式: 预期逐仓 → 实际{actualMarginType}";
+                    }
+
+                    StatusMessage = $"✅ 限价下单成功 - {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice} (杠杆: {actualLeverage}x, 模式: {actualMarginType})";
                     
                     // 延迟刷新委托列表以获取真实的委托信息
                     _ = Task.Run(async () =>
@@ -590,10 +801,14 @@ public partial class TestViewModel : ObservableObject
                         await RefreshOpenOrdersAsync();
                     });
                     
-                    var successMessage = $"✅ 限价下单执行成功！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {adjustedQuantity}\n价格: {adjustedPrice}";
+                    var successMessage = $"✅ 限价下单执行成功！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {adjustedQuantity}\n价格: {adjustedPrice}\n杠杆: {actualLeverage}x\n保证金模式: {actualMarginType}";
                     if (adjustedQuantity != LimitQuantity || adjustedPrice != LimitPrice)
                     {
                         successMessage += $"\n\n原始输入:\n数量: {LimitQuantity}\n价格: {LimitPrice}";
+                    }
+                    if (!string.IsNullOrEmpty(settingsInfo))
+                    {
+                        successMessage += $"\n\n设置提醒:{settingsInfo}";
                     }
                     
                     MessageBox.Show(successMessage, "交易成功", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -601,7 +816,23 @@ public partial class TestViewModel : ObservableObject
                     // 记录交易历史
                     if (_logService != null)
                     {
-                        await _logService.LogInfoAsync($"限价下单成功: {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice}", "交易");
+                        await _logService.LogInfoAsync($"限价下单成功: {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice} (杠杆: {actualLeverage}x, 模式: {actualMarginType})", "交易");
+                    }
+                    
+                    // 记录到交易历史
+                    if (_tradeHistoryService != null)
+                    {
+                        var tradeHistory = new TradeHistory
+                        {
+                            Symbol = LimitSymbol,
+                            Action = "限价下单",
+                            Side = LimitSide,
+                            Price = adjustedPrice,
+                            Quantity = adjustedQuantity,
+                            Result = $"成功 (杠杆: {actualLeverage}x, 模式: {actualMarginType})",
+                            Category = "限价下单"
+                        };
+                        await _tradeHistoryService.AddTradeHistoryAsync(tradeHistory);
                     }
 
                     // 自动添加到最近交易合约列表
@@ -610,7 +841,27 @@ public partial class TestViewModel : ObservableObject
                 else
                 {
                     StatusMessage = $"❌ 限价下单失败 - {LimitSymbol}";
-                    MessageBox.Show("❌ 限价下单失败！请检查网络连接和API权限。", "下单失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    Console.WriteLine($"❌ 限价下单最终失败: {LimitSymbol} {LimitSide} {adjustedQuantity}@{adjustedPrice}");
+                    
+                    // 为SOMI币种提供专门的错误提示
+                    string errorMessage;
+                    if (LimitSymbol.ToUpper().Contains("SOMI"))
+                    {
+                        var isQuantityInteger = adjustedQuantity == Math.Floor(adjustedQuantity);
+                        errorMessage = $"❌ SOMIUSDT限价下单失败！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {adjustedQuantity} (是否整数: {isQuantityInteger})\n价格: {adjustedPrice:F5}\n\n🪙 SOMI币种特殊要求：\n• 数量必须为整数 (如: 427, 不能是427.000)\n• 价格保留5位小数\n• 最小数量: 1个\n\n💡 建议解决方案：\n• 确保数量为整数\n• 检查网络连接\n• 验证API权限\n• 降低杠杆倍数 (如改为5x或3x)";
+                    }
+                    else
+                    {
+                        errorMessage = $"❌ 限价下单失败！\n\n合约: {LimitSymbol}\n方向: {LimitSide}\n数量: {adjustedQuantity}\n价格: {adjustedPrice}\n\n请查看日志获取详细错误信息。\n常见原因：\n• 价格精度不符合要求\n• 数量精度不符合要求\n• 价格偏离当前价格过多\n• API权限不足\n• 网络连接问题";
+                    }
+                    
+                    MessageBox.Show(errorMessage, "下单失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    
+                    // 记录详细的失败信息到日志
+                    if (_logService != null)
+                    {
+                        await _logService.LogErrorAsync($"限价下单失败详情", new Exception($"Symbol={LimitSymbol}, Side={LimitSide}, Quantity={adjustedQuantity}, Price={adjustedPrice}, 原始数量={LimitQuantity}, 原始价格={LimitPrice}"), "限价下单");
+                    }
                 }
             }
             catch (Exception ex)
@@ -682,7 +933,10 @@ public partial class TestViewModel : ObservableObject
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
                 {
-                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                    var leverageErrorMsg = $"⚠️ 杠杆设置失败：{MarketSymbol} 不支持 {MarketLeverage}x 杠杆\n\n可能的原因：\n• 该合约不支持所选杠杆倍数\n• 当前持仓状态限制杠杆调整\n• 账户风险等级限制\n\n建议：\n• 尝试使用更低的杠杆倍数（如1x, 3x, 5x）\n• 检查该合约支持的杠杆范围\n• 清空持仓后重新设置";
+                    
+                    Console.WriteLine($"⚠️ 设置杠杆失败，但继续下单尝试");
+                    MessageBox.Show(leverageErrorMsg, "杠杆设置失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
                 // 根据合约精度调整价格和数量
@@ -761,6 +1015,10 @@ public partial class TestViewModel : ObservableObject
                     {
                         await _logService.LogInfoAsync($"做多条件单创建成功: {MarketSymbol} 突破价 {adjustedStopPrice:F4}", "交易");
                     }
+                    
+                    // 记录到交易历史
+                    // 记录到交易历史
+                    await RecordTradeHistoryAsync(MarketSymbol, "做多条件单", "BUY", adjustedStopPrice, adjustedQuantity, "成功创建", "条件单");
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
@@ -851,7 +1109,10 @@ public partial class TestViewModel : ObservableObject
                 bool leverageSet = await _binanceService.SetLeverageAsync(MarketSymbol, (int)MarketLeverage);
                 if (!leverageSet)
                 {
-                    Console.WriteLine($"⚠️ 设置杠杆失败，继续下单");
+                    var leverageErrorMsg = $"⚠️ 杠杆设置失败：{MarketSymbol} 不支持 {MarketLeverage}x 杠杆\n\n可能的原因：\n• 该合约不支持所选杠杆倍数\n• 当前持仓状态限制杠杆调整\n• 账户风险等级限制\n\n建议：\n• 尝试使用更低的杠杆倍数（如1x, 3x, 5x）\n• 检查该合约支持的杠杆范围\n• 清空持仓后重新设置";
+                    
+                    Console.WriteLine($"⚠️ 设置杠杆失败，但继续下单尝试");
+                    MessageBox.Show(leverageErrorMsg, "杠杆设置失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
 
                 // 根据合约精度调整价格和数量
@@ -921,6 +1182,9 @@ public partial class TestViewModel : ObservableObject
                     {
                         await _logService.LogInfoAsync($"做空条件单创建成功: {MarketSymbol} 跌破价 {adjustedStopPrice:F4}", "交易");
                     }
+                    
+                    // 记录到交易历史
+                    await RecordTradeHistoryAsync(MarketSymbol, "做空条件单", "SELL", adjustedStopPrice, adjustedQuantity, "成功创建", "条件单");
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
@@ -1248,6 +1512,11 @@ public partial class TestViewModel : ObservableObject
                     {
                         await _logService.LogInfoAsync($"平仓成功: {MarketSymbol} {Math.Abs(currentPosition.PositionAmt)} 盈亏{currentPosition.UnRealizedProfit:F2}", "交易");
                     }
+                    
+                    // 记录到交易历史
+                    var closeSide = currentPosition.PositionAmt > 0 ? "SELL" : "BUY";
+                    await RecordTradeHistoryAsync(MarketSymbol, "平仓", closeSide, null, Math.Abs(currentPosition.PositionAmt), 
+                        $"成功 - 盈亏: {currentPosition.UnRealizedProfit:F2}", "平仓");
 
                     // 自动添加到最近交易合约列表
                     await AddToRecentSymbolsAsync(MarketSymbol);
@@ -1256,6 +1525,10 @@ public partial class TestViewModel : ObservableObject
                 {
                     StatusMessage = $"❌ 平仓失败 - {MarketSymbol}";
                     MessageBox.Show("❌ 平仓下单失败！请检查网络连接和API权限。", "平仓失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    
+                    // 记录失败到交易历史
+                    var closeSide = currentPosition.PositionAmt > 0 ? "SELL" : "BUY";
+                    await RecordTradeHistoryAsync(MarketSymbol, "平仓", closeSide, null, Math.Abs(currentPosition.PositionAmt), "失败 - API调用失败", "平仓");
                 }
             }
         }
@@ -1695,25 +1968,54 @@ public partial class TestViewModel : ObservableObject
     {
         try
         {
+            Console.WriteLine($"🔄 开始重新计算数量: 合约={MarketSymbol}, 风险金额={RiskAmount}, 最新价={LatestPrice}, 止损比例={ConditionalStopLossRatio}%");
+            
             if (LatestPrice <= 0 || RiskAmount <= 0)
+            {
+                Console.WriteLine($"⚠️ 无效参数，跳过计算: 最新价={LatestPrice}, 风险金额={RiskAmount}");
                 return;
+            }
+
+            if (string.IsNullOrEmpty(MarketSymbol))
+            {
+                Console.WriteLine($"⚠️ 合约符号为空，跳过计算");
+                return;
+            }
 
             // 获取当前选中合约的精度信息
             int quantityPrecision = 4; // 默认精度
             decimal minQty = 0.001m;
+            decimal stepSize = 0.001m;
 
-            if (!string.IsNullOrEmpty(MarketSymbol) && _binanceSymbolService != null)
+            if (_binanceSymbolService != null)
             {
                 try
                 {
+                    Console.WriteLine($"📊 获取 {MarketSymbol} 的精度信息...");
                     var precision = await _binanceSymbolService.GetSymbolPrecisionAsync(MarketSymbol);
                     quantityPrecision = precision.quantityPrecision;
                     minQty = precision.minQty;
+                    
+                    // 获取完整的合约信息以获取StepSize
+                    var symbolInfo = await _binanceSymbolService.GetSymbolInfoAsync(MarketSymbol);
+                    if (symbolInfo != null)
+                    {
+                        stepSize = symbolInfo.StepSize;
+                        Console.WriteLine($"📈 获取精度信息成功: 数量精度={quantityPrecision}, 最小数量={minQty}, 步长={stepSize}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ 无法获取合约信息，使用默认精度");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"获取精度信息失败: {ex.Message}");
+                    Console.WriteLine($"❌ 获取精度信息失败: {ex.Message}");
                 }
+            }
+            else
+            {
+                Console.WriteLine($"⚠️ BinanceSymbolService未初始化，使用默认精度");
             }
 
             // 计算新的数量 - 正确算法：市值 = 风险金额 / 止损比例，数量 = 市值 / 最新价
@@ -1721,43 +2023,295 @@ public partial class TestViewModel : ObservableObject
             var marketValue = RiskAmount / stopLossRatio; // 市值 = A / 止损比例
             var calculatedQuantity = marketValue / LatestPrice; // 数量 = 市值 / 最新价
 
+            Console.WriteLine($"📊 计算过程: 市值={marketValue:F2} (风险金额{RiskAmount}/止损比例{stopLossRatio:F4}), 原始数量={calculatedQuantity:F8}");
+
             // 使用合约服务调整数量到有效值
-            if (_binanceSymbolService != null)
+            decimal adjustedQuantity = calculatedQuantity;
+            if (_binanceSymbolService != null && !string.IsNullOrEmpty(MarketSymbol))
             {
                 try
                 {
-                    calculatedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(MarketSymbol, calculatedQuantity);
+                    var originalQuantity = calculatedQuantity;
+                    adjustedQuantity = await _binanceSymbolService.AdjustQuantityToValidAsync(MarketSymbol, calculatedQuantity);
+                    Console.WriteLine($"🔧 合约服务调整: {originalQuantity:F8} → {adjustedQuantity:F8}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"调整数量失败: {ex.Message}");
-                    // 降级到简单的四舍五入
-                    calculatedQuantity = Math.Round(calculatedQuantity, quantityPrecision);
+                    Console.WriteLine($"❌ 合约服务调整失败: {ex.Message}");
+                    // 降级到手动调整
+                    adjustedQuantity = AdjustQuantityManually(calculatedQuantity, quantityPrecision, minQty, stepSize);
+                    Console.WriteLine($"🔧 手动调整结果: {adjustedQuantity:F8}");
                 }
             }
             else
             {
-                calculatedQuantity = Math.Round(calculatedQuantity, quantityPrecision);
+                // 手动调整精度
+                adjustedQuantity = AdjustQuantityManually(calculatedQuantity, quantityPrecision, minQty, stepSize);
+                Console.WriteLine($"🔧 手动调整 (服务未可用): {calculatedQuantity:F8} → {adjustedQuantity:F8}");
             }
 
             // 确保不小于最小数量
-            if (calculatedQuantity < minQty)
+            if (adjustedQuantity < minQty)
             {
-                calculatedQuantity = minQty;
+                Console.WriteLine($"⚠️ 调整后数量 {adjustedQuantity} 小于最小值 {minQty}，修正为最小值");
+                adjustedQuantity = minQty;
             }
 
-            // 在UI线程上更新数量
+            // 最终精度检查 - 强制确保数量符合精度要求
+            var finalQuantity = ForcePrecisionAdjustment(adjustedQuantity, quantityPrecision, minQty, stepSize);
+            if (finalQuantity != adjustedQuantity)
+            {
+                Console.WriteLine($"🔧 最终精度强制调整: {adjustedQuantity:F8} → {finalQuantity:F8}");
+                adjustedQuantity = finalQuantity;
+            }
+
+            // 直接更新内部字段，避免触发setter中的精度调整
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                MarketQuantity = calculatedQuantity;
-                LimitQuantity = calculatedQuantity;
+                _marketQuantity = adjustedQuantity;
+                _limitQuantity = adjustedQuantity;
+                OnPropertyChanged(nameof(MarketQuantity));
+                OnPropertyChanged(nameof(LimitQuantity));
+                
+                // 确保限价合约与市价合约保持同步
+                if (LimitSymbol != MarketSymbol)
+                {
+                    LimitSymbol = MarketSymbol;
+                }
             });
 
-            Console.WriteLine($"🔄 重新计算数量: {calculatedQuantity.ToString($"F{quantityPrecision}")} (精度: {quantityPrecision}位, 最小: {minQty})");
+            Console.WriteLine($"✅ 数量计算完成: {adjustedQuantity.ToString($"F{quantityPrecision}")} (精度: {quantityPrecision}位, 最小: {minQty}, 步长: {stepSize})");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"重新计算数量失败: {ex.Message}");
+            Console.WriteLine($"❌ 重新计算数量失败: {ex.Message}");
+            Console.WriteLine($"🔍 异常详情: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// 手动调整数量精度
+    /// </summary>
+    private decimal AdjustQuantityManually(decimal quantity, int precision, decimal minQty, decimal stepSize)
+    {
+        // 确保不小于最小数量
+        if (quantity < minQty) 
+            return minQty;
+
+        // 根据步长调整
+        if (stepSize > 0)
+        {
+            var steps = Math.Round((quantity - minQty) / stepSize, 0);
+            var adjustedQuantity = minQty + steps * stepSize;
+            
+            // 确保精度正确
+            adjustedQuantity = Math.Round(adjustedQuantity, precision);
+            
+            return adjustedQuantity;
+        }
+        
+        // 如果没有步长信息，直接按精度四舍五入
+        return Math.Round(quantity, precision);
+    }
+
+    /// <summary>
+    /// 强制精度调整 - 确保数量符合要求
+    /// </summary>
+    private decimal ForcePrecisionAdjustment(decimal quantity, int precision, decimal minQty, decimal stepSize)
+    {
+        Console.WriteLine($"🔧 强制精度调整开始: 原始数量={quantity:F8}, 精度={precision}, 最小值={minQty}, 步长={stepSize}");
+        
+        // 特殊处理：如果是新合约，优先使用新合约精度调整
+        if (!string.IsNullOrEmpty(MarketSymbol))
+        {
+            var newContractQuantity = AdjustQuantityForNewContracts(quantity, MarketSymbol);
+            if (newContractQuantity != quantity)
+            {
+                Console.WriteLine($"🆕 使用新合约精度调整结果: {quantity:F8} → {newContractQuantity:F8}");
+                quantity = newContractQuantity;
+            }
+        }
+        
+        // 第一步：确保不小于最小数量
+        if (quantity < minQty)
+        {
+            Console.WriteLine($"📏 数量小于最小值，调整: {quantity:F8} → {minQty}");
+            quantity = minQty;
+        }
+
+        // 第二步：根据步长调整（这是币安的要求）
+        if (stepSize > 0 && stepSize != 0.0m)
+        {
+            // 计算相对于最小值的步数
+            var relativeQuantity = quantity - minQty;
+            var steps = Math.Floor(relativeQuantity / stepSize); // 向下取整，确保不超过
+            var adjustedQuantity = minQty + steps * stepSize;
+            
+            Console.WriteLine($"📐 步长调整: 相对数量={relativeQuantity:F8}, 步数={steps}, 调整后={adjustedQuantity:F8}");
+            quantity = adjustedQuantity;
+        }
+
+        // 第三步：按精度位数四舍五入
+        var finalQuantity = Math.Round(quantity, precision);
+        Console.WriteLine($"🎯 精度四舍五入: {quantity:F8} → {finalQuantity:F8} (保留{precision}位小数)");
+
+        // 第四步：再次确保不小于最小值（四舍五入后可能变小）
+        if (finalQuantity < minQty)
+        {
+            Console.WriteLine($"⚠️ 四舍五入后小于最小值，强制设为最小值: {finalQuantity:F8} → {minQty}");
+            finalQuantity = minQty;
+        }
+
+        Console.WriteLine($"✅ 强制精度调整完成: {quantity:F8} → {finalQuantity:F8}");
+        return finalQuantity;
+    }
+
+    /// <summary>
+    /// 专门针对SOMIUSDT等新合约的精度调整
+    /// </summary>
+    private decimal AdjustQuantityForNewContracts(decimal quantity, string symbol)
+    {
+        Console.WriteLine($"🔧 新合约精度调整: {symbol} 数量={quantity:F8}");
+        
+        // SOMIUSDT等新合约通常要求整数数量
+        if (symbol.Contains("SOMI") || symbol.Contains("MEME") || symbol.Contains("PEPE"))
+        {
+            var integerQuantity = Math.Floor(quantity);
+            Console.WriteLine($"📏 {symbol} 调整为整数: {quantity:F8} → {integerQuantity}");
+            return Math.Max(1, integerQuantity); // 确保至少为1
+        }
+        
+        // 其他新合约的特殊处理
+        switch (symbol.ToUpper())
+        {
+            case "SOMIUSDT":
+                // SOMIUSDT通常要求整数
+                var somiQuantity = Math.Floor(quantity);
+                Console.WriteLine($"🪙 SOMIUSDT 整数调整: {quantity:F8} → {somiQuantity}");
+                return Math.Max(1, somiQuantity);
+                
+            default:
+                // 默认保留2位小数
+                var defaultQuantity = Math.Round(quantity, 2);
+                Console.WriteLine($"📊 {symbol} 默认精度调整: {quantity:F8} → {defaultQuantity:F2}");
+                return defaultQuantity;
+        }
+    }
+
+    /// <summary>
+    /// 新合约价格精度调整
+    /// </summary>
+    private decimal AdjustPriceForNewContracts(decimal price, string symbol)
+    {
+        Console.WriteLine($"💰 新合约价格精度调整: {symbol} 价格={price:F8}");
+        
+        switch (symbol.ToUpper())
+        {
+            case "SOMIUSDT":
+                // SOMIUSDT价格通常保留5位小数
+                var somiPrice = Math.Round(price, 5);
+                Console.WriteLine($"🪙 SOMIUSDT 价格调整: {price:F8} → {somiPrice:F5}");
+                return somiPrice;
+                
+            default:
+                // 默认保留4位小数
+                var defaultPrice = Math.Round(price, 4);
+                Console.WriteLine($"💰 {symbol} 默认价格调整: {price:F8} → {defaultPrice:F4}");
+                return defaultPrice;
+        }
+    }
+
+    /// <summary>
+    /// 调整市价数量到合约规定的精度
+    /// </summary>
+    public async Task AdjustMarketQuantityToPrecisionAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(MarketSymbol) || _binanceSymbolService == null)
+            {
+                Console.WriteLine($"⚠️ 无法调整市价数量精度: 合约符号为空或服务未初始化");
+                return;
+            }
+
+            Console.WriteLine($"🔧 开始调整市价数量精度: {MarketQuantity} -> ?");
+            
+            // 获取精度信息
+            var precision = await _binanceSymbolService.GetSymbolPrecisionAsync(MarketSymbol);
+            var symbolInfo = await _binanceSymbolService.GetSymbolInfoAsync(MarketSymbol);
+            
+            // 调整数量
+            decimal adjustedQuantity;
+            if (symbolInfo != null)
+            {
+                adjustedQuantity = symbolInfo.AdjustQuantity(MarketQuantity);
+            }
+            else
+            {
+                adjustedQuantity = AdjustQuantityManually(MarketQuantity, precision.quantityPrecision, precision.minQty, 0.001m);
+            }
+
+            // 只在数量确实发生变化时才更新
+            if (adjustedQuantity != MarketQuantity)
+            {
+                // 临时禁用自动调整，避免无限循环
+                var originalValue = _marketQuantity;
+                _marketQuantity = adjustedQuantity;
+                OnPropertyChanged(nameof(MarketQuantity));
+                
+                Console.WriteLine($"✅ 市价数量精度调整: {originalValue} -> {adjustedQuantity}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ 调整市价数量精度失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 调整限价数量到合约规定的精度
+    /// </summary>
+    public async Task AdjustLimitQuantityToPrecisionAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(LimitSymbol) || _binanceSymbolService == null)
+            {
+                Console.WriteLine($"⚠️ 无法调整限价数量精度: 合约符号为空或服务未初始化");
+                return;
+            }
+
+            Console.WriteLine($"🔧 开始调整限价数量精度: {LimitQuantity} -> ?");
+            
+            // 获取精度信息
+            var precision = await _binanceSymbolService.GetSymbolPrecisionAsync(LimitSymbol);
+            var symbolInfo = await _binanceSymbolService.GetSymbolInfoAsync(LimitSymbol);
+            
+            // 调整数量
+            decimal adjustedQuantity;
+            if (symbolInfo != null)
+            {
+                adjustedQuantity = symbolInfo.AdjustQuantity(LimitQuantity);
+            }
+            else
+            {
+                adjustedQuantity = AdjustQuantityManually(LimitQuantity, precision.quantityPrecision, precision.minQty, 0.001m);
+            }
+
+            // 只在数量确实发生变化时才更新
+            if (adjustedQuantity != LimitQuantity)
+            {
+                // 临时禁用自动调整，避免无限循环
+                var originalValue = _limitQuantity;
+                _limitQuantity = adjustedQuantity;
+                OnPropertyChanged(nameof(LimitQuantity));
+                
+                Console.WriteLine($"✅ 限价数量精度调整: {originalValue} -> {adjustedQuantity}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ 调整限价数量精度失败: {ex.Message}");
         }
     }
 
@@ -1857,6 +2411,9 @@ public partial class TestViewModel : ObservableObject
             // 自动填充合约名称到所有下单区域
             MarketSymbol = symbol;
             LimitSymbol = symbol;
+            
+            // 确保限价下单方向和市价下单方向同步
+            LimitSide = MarketSide;
 
             // 获取合约详细信息和最新价格
             decimal latestPrice = 0;
@@ -2752,4 +3309,25 @@ public partial class TestViewModel : ObservableObject
      }
      
      #endregion
- } 
+
+    /// <summary>
+    /// 记录交易历史的助手方法
+    /// </summary>
+    private async Task RecordTradeHistoryAsync(string symbol, string action, string side, decimal? price = null, decimal? quantity = null, string result = "成功", string category = "交易")
+    {
+        if (_tradeHistoryService != null)
+        {
+            var tradeHistory = new TradeHistory
+            {
+                Symbol = symbol,
+                Action = action,
+                Side = side,
+                Price = price,
+                Quantity = quantity,
+                Result = result,
+                Category = category
+            };
+            await _tradeHistoryService.AddTradeHistoryAsync(tradeHistory);
+        }
+    }
+} 

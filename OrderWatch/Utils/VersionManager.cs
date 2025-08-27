@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Reflection;
 
 namespace OrderWatch.Utils;
 
@@ -65,24 +66,85 @@ public static class VersionManager
 
         try
         {
+            // 方法1: 尝试从文件读取
             if (File.Exists(VersionFilePath))
             {
                 var jsonContent = File.ReadAllText(VersionFilePath);
                 var versionData = JsonSerializer.Deserialize<VersionData>(jsonContent);
-                _currentVersion = versionData?.Version ?? "0.01";
+                _currentVersion = versionData?.Version ?? GetVersionFromAssembly();
+                Console.WriteLine($"✅ 从文件读取版本号: {_currentVersion}");
             }
+            // 方法2: 从内嵌资源读取（发布版本）
+            else if (TryGetVersionFromEmbeddedResource(out var embeddedVersion))
+            {
+                _currentVersion = embeddedVersion;
+                Console.WriteLine($"✅ 从内嵌资源读取版本号: {_currentVersion}");
+            }
+            // 方法3: 从程序集版本读取
             else
             {
-                _currentVersion = "0.01";
+                _currentVersion = GetVersionFromAssembly();
+                Console.WriteLine($"✅ 从程序集读取版本号: {_currentVersion}");
                 SaveVersion(_currentVersion);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            _currentVersion = "0.01";
+            Console.WriteLine($"⚠️ 读取版本号失败: {ex.Message}");
+            _currentVersion = GetVersionFromAssembly();
         }
 
         return _currentVersion;
+    }
+
+    /// <summary>
+    /// 从内嵌资源读取版本号
+    /// </summary>
+    private static bool TryGetVersionFromEmbeddedResource(out string version)
+    {
+        version = "0.01";
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using var stream = assembly.GetManifestResourceStream("version.json");
+            if (stream != null)
+            {
+                using var reader = new StreamReader(stream);
+                var jsonContent = reader.ReadToEnd();
+                var versionData = JsonSerializer.Deserialize<VersionData>(jsonContent);
+                version = versionData?.Version ?? "0.01";
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ 从内嵌资源读取版本失败: {ex.Message}");
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 从程序集版本信息读取版本号
+    /// </summary>
+    private static string GetVersionFromAssembly()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var version = assembly.GetName().Version;
+            if (version != null && version.Major > 0)
+            {
+                // 将程序集版本转换为我们的格式 (例如: 0.50.0.0 -> 0.50)
+                var versionString = $"{version.Major}.{version.Minor:D2}";
+                Console.WriteLine($"📊 程序集版本: {version} -> {versionString}");
+                return versionString;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ 读取程序集版本失败: {ex.Message}");
+        }
+        return "0.01";
     }
 
     /// <summary>

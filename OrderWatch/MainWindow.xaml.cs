@@ -378,5 +378,23 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 市价数量输入框失去焦点时，自动调整到合约规定的精度
+    /// </summary>
+    private async void MarketQuantityTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is TestViewModel viewModel)
+            {
+                await viewModel.AdjustMarketQuantityToPrecisionAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"调整市价数量精度失败: {ex.Message}");
+        }
+    }
+
     #endregion
 }

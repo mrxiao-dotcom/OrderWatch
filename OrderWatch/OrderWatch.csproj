@@ -11,9 +11,14 @@
     <AssemblyCompany>OrderWatch</AssemblyCompany>
     <AssemblyProduct>OrderWatch</AssemblyProduct>
     <AssemblyCopyright>Copyright © 2024</AssemblyCopyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <!-- 动态版本号，将从version.json中读取 -->
+    <AssemblyVersion>$(VersionFromFile)</AssemblyVersion>
+    <FileVersion>$(VersionFromFile)</FileVersion>
+    <Version>$(VersionFromFile)</Version>
     <ApplicationIcon>icon.ico</ApplicationIcon>
+    <!-- 生成详细版本信息 -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,15 +43,66 @@
     </None>
   </ItemGroup>
 
-  <!-- 编译前自动递增版本号 -->
-  <Target Name="IncrementVersionNumber" BeforeTargets="BeforeBuild">
-    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File &quot;$(ProjectDir)Scripts\IncrementVersion.ps1&quot; -ProjectDir &quot;$(ProjectDir)&quot;" ContinueOnError="true" IgnoreExitCode="true" ConsoleToMSBuild="true" />
+  <!-- 内嵌版本资源文件 -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\version.json">
+      <LogicalName>version.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- 读取版本文件并设置版本号 -->
+  <Target Name="ReadVersionFromFile" BeforeTargets="GetAssemblyVersion;BeforeBuild">
+    <PropertyGroup>
+      <VersionFilePath>..\version.json</VersionFilePath>
+    </PropertyGroup>
+    
+    <!-- 确保版本文件存在 -->
+    <Exec Command="if not exist &quot;$(VersionFilePath)&quot; echo {&quot;Version&quot;:&quot;0.01&quot;,&quot;lastUpdate&quot;:&quot;$(MSBuildDate)&quot;} > &quot;$(VersionFilePath)&quot;" 
+          ContinueOnError="true" 
+          Condition="!Exists('$(VersionFilePath)')" />
+    
+    <!-- 读取版本号 -->
+    <ReadLinesFromFile File="$(VersionFilePath)">
+      <Output TaskParameter="Lines" ItemName="VersionFileLines" />
+    </ReadLinesFromFile>
+    
+    <!-- 解析JSON版本号 -->
+    <PropertyGroup>
+      <VersionJson>@(VersionFileLines)</VersionJson>
+      <VersionFromFile>0.01</VersionFromFile>
+      <VersionFromFile Condition="$(VersionJson.Contains('Version'))">$([System.Text.RegularExpressions.Regex]::Match($(VersionJson), '"Version"\s*:\s*"([^"]+)"').Groups[1].Value)</VersionFromFile>
+      <!-- 转换为标准版本格式 (例如: 0.58 -> 0.58.0.0) -->
+      <VersionDecimal>$([System.Convert]::ToDecimal($(VersionFromFile)))</VersionDecimal>
+      <MajorVersion>$([System.Convert]::ToInt32($([System.Math]::Floor($(VersionDecimal)))))</MajorVersion>
+      <VersionTimes100>$([System.Convert]::ToDecimal($([MSBuild]::Multiply($(VersionDecimal), 100))))</VersionTimes100>
+      <MinorVersion>$([System.Convert]::ToInt32($([MSBuild]::Modulo($([System.Convert]::ToInt32($(VersionTimes100))), 100))))</MinorVersion>
+      <VersionFromFile>$(MajorVersion).$(MinorVersion).0.0</VersionFromFile>
+    </PropertyGroup>
+    
+    <Message Text="📊 从version.json读取版本号: $(VersionFromFile)" Importance="high" />
+  </Target>
+
+  <!-- 编译前自动递增版本号（可通过多种方式跳过） -->
+  <Target Name="IncrementVersionNumber" BeforeTargets="ReadVersionFromFile" 
+          Condition="'$(SkipIncrementVersion)' != 'true' AND '$(IncrementVersionDisabled)' != 'true' AND !Exists('..\version_increment.lock')">
+    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File &quot;$(ProjectDir)OrderWatch\Scripts\IncrementVersion.ps1&quot; -ProjectDir &quot;$(ProjectDir)&quot;" ContinueOnError="true" IgnoreExitCode="true" ConsoleToMSBuild="true" />
   </Target>
 
   <!-- 编译后复制根目录版本文件 -->
   <Target Name="CopyVersionFile" AfterTargets="Build">
     <Copy SourceFiles="..\version.json" DestinationFolder="$(OutputPath)" OverwriteReadOnlyFiles="true" ContinueOnError="true" />
-    <Message Text="已复制版本文件到输出目录: $(OutputPath)" Importance="high" />
+    <Message Text="✅ 已复制版本文件到输出目录: $(OutputPath)" Importance="high" />
+  </Target>
+
+  <!-- 发布时确保版本文件包含在内 -->
+  <Target Name="IncludeVersionInPublish" BeforeTargets="PrepareForPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="..\version.json">
+        <RelativePath>version.json</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <Message Text="🚀 已将版本文件包含到发布输出" Importance="high" />
   </Target>
 
 </Project>

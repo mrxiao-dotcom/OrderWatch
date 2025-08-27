@@ -168,7 +168,10 @@ public class TradeHistoryService : ITradeHistoryService
         try
         {
             if (!File.Exists(_historyFilePath))
+            {
+                Console.WriteLine($"交易历史文件不存在: {_historyFilePath}");
                 return new List<TradeHistory>();
+            }
 
             string content;
             using (var fileStream = new FileStream(_historyFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -178,14 +181,34 @@ public class TradeHistoryService : ITradeHistoryService
             }
 
             if (string.IsNullOrEmpty(content))
+            {
+                Console.WriteLine("交易历史文件为空");
                 return new List<TradeHistory>();
+            }
 
-            var histories = JsonSerializer.Deserialize<List<TradeHistory>>(content);
-            return histories ?? new List<TradeHistory>();
+            try
+            {
+                var histories = JsonSerializer.Deserialize<List<TradeHistory>>(content);
+                Console.WriteLine($"成功加载 {histories?.Count ?? 0} 条交易历史记录");
+                return histories ?? new List<TradeHistory>();
+            }
+            catch (JsonException jsonEx)
+            {
+                Console.WriteLine($"JSON反序列化失败: {jsonEx.Message}");
+                Console.WriteLine($"文件内容: {content.Substring(0, Math.Min(200, content.Length))}...");
+                
+                // 如果JSON文件损坏，创建备份并返回空列表
+                var backupPath = _historyFilePath + $".backup_{DateTime.Now:yyyyMMdd_HHmmss}";
+                File.Copy(_historyFilePath, backupPath);
+                Console.WriteLine($"已创建损坏文件的备份: {backupPath}");
+                
+                return new List<TradeHistory>();
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"加载交易历史失败: {ex.Message}");
+            Console.WriteLine($"堆栈跟踪: {ex.StackTrace}");
             return new List<TradeHistory>();
         }
     }

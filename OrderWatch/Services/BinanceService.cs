@@ -23,6 +23,76 @@ public class BinanceService : IBinanceService, IDisposable
         Console.WriteLine($"币安API凭据已设置，测试网: {isTestNet}");
     }
 
+    /// <summary>
+    /// 验证合约的杠杆和保证金模式设置
+    /// </summary>
+    public async Task<(int leverage, string marginType)> GetPositionSettingsAsync(string symbol)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
+            {
+                Console.WriteLine($"⚠️ API凭据未设置，无法验证设置");
+                return (0, "UNKNOWN");
+            }
+
+            var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+            var endpoint = "/fapi/v2/positionRisk";
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            var queryString = $"symbol={symbol}&timestamp={timestamp}";
+            var signature = GenerateSignature(queryString);
+            queryString += $"&signature={signature}";
+
+            var fullUrl = $"{baseUrl}{endpoint}?{queryString}";
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
+
+            var response = await httpClient.GetAsync(fullUrl);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"📊 获取持仓风险信息: {symbol}");
+
+                // 解析响应并提取杠杆和保证金模式
+                try
+                {
+                    var positions = JsonSerializer.Deserialize<JsonElement[]>(responseBody);
+                    if (positions != null && positions.Length > 0)
+                    {
+                        var position = positions[0];
+                        var leverage = position.GetProperty("leverage").GetString();
+                        var marginType = position.GetProperty("marginType").GetString();
+                        
+                        Console.WriteLine($"🔍 当前设置验证: {symbol} 杠杆={leverage}x, 保证金模式={marginType}");
+                        
+                        if (int.TryParse(leverage, out int leverageInt))
+                        {
+                            return (leverageInt, marginType ?? "UNKNOWN");
+                        }
+                    }
+                }
+                catch (Exception parseEx)
+                {
+                    Console.WriteLine($"⚠️ 解析持仓信息失败: {parseEx.Message}");
+                }
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"❌ 获取持仓信息失败: {response.StatusCode} - {errorBody}");
+            }
+
+            return (0, "UNKNOWN");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ 验证设置异常: {ex.Message}");
+            return (0, "UNKNOWN");
+        }
+    }
+
     public async Task<bool> TestConnectionAsync()
     {
         try
@@ -396,8 +466,27 @@ public class BinanceService : IBinanceService, IDisposable
             var signature = GenerateSignature(queryString);
             queryString += $"&signature={signature}";
 
-            // 发送POST请求
+            // 准备发送请求
             var fullUrl = $"{baseUrl}{endpoint}";
+
+            // 打印完整的请求信息用于调试
+            Console.WriteLine($"📤 发送下单请求: {endpoint}");
+            Console.WriteLine($"📝 完整请求URL: {fullUrl}");
+            Console.WriteLine($"📋 请求参数详情:");
+            foreach (var param in parameters)
+            {
+                // 隐藏敏感信息
+                if (param.Key == "signature")
+                {
+                    Console.WriteLine($"   {param.Key}: {param.Value.Substring(0, Math.Min(8, param.Value.Length))}...");
+                }
+                else
+                {
+                    Console.WriteLine($"   {param.Key}: {param.Value}");
+                }
+            }
+
+            // 发送POST请求
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
 
@@ -407,30 +496,59 @@ public class BinanceService : IBinanceService, IDisposable
             if (response.IsSuccessStatusCode)
             {
                 var responseBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"下单成功: {request.Symbol} {request.Side} {request.Type} {request.Quantity}");
-                Console.WriteLine($"响应: {responseBody}");
+                Console.WriteLine($"✅ 下单成功: {request.Symbol} {request.Side} {request.Type} {request.Quantity}");
+                Console.WriteLine($"📥 API响应: {responseBody}");
                 return true;
             }
             else
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"❌ 下单失败: {response.StatusCode}");
-                Console.WriteLine($"📝 请求参数: {queryString}");
-                Console.WriteLine($"🔍 错误详情: {errorBody}");
+                Console.WriteLine($"❌ 下单失败: HTTP {(int)response.StatusCode} {response.StatusCode}");
+                Console.WriteLine($"🔍 完整错误响应: {errorBody}");
                 
-                // 尝试解析具体的错误信息
+                // 尝试解析具体的错误信息并提供解决建议
                 try
                 {
                     using var doc = JsonDocument.Parse(errorBody);
+                    if (doc.RootElement.TryGetProperty("code", out var codeElement))
+                    {
+                        var errorCode = codeElement.GetInt32();
+                        Console.WriteLine($"🚨 错误代码: {errorCode}");
+                        
+                        // 提供针对性的错误解释
+                        switch (errorCode)
+                        {
+                            case -1013:
+                                Console.WriteLine($"💡 错误解释: 价格过滤器错误，价格不符合要求");
+                                Console.WriteLine($"💡 建议: 检查价格精度，确保价格在允许范围内");
+                                break;
+                            case -1111:
+                                Console.WriteLine($"💡 错误解释: 精度超出限制");
+                                Console.WriteLine($"💡 建议: 检查数量或价格的小数位数");
+                                break;
+                            case -2010:
+                                Console.WriteLine($"💡 错误解释: 余额不足");
+                                Console.WriteLine($"💡 建议: 检查账户余额");
+                                break;
+                            case -4028:
+                                Console.WriteLine($"💡 错误解释: 杠杆设置无效");
+                                Console.WriteLine($"💡 建议: 检查该合约支持的杠杆范围");
+                                break;
+                            case -4046:
+                                Console.WriteLine($"💡 错误解释: 保证金模式无需更改");
+                                break;
+                        }
+                    }
+                    
                     if (doc.RootElement.TryGetProperty("msg", out var msgElement))
                     {
                         var errorMsg = msgElement.GetString();
                         Console.WriteLine($"🚨 币安错误信息: {errorMsg}");
                     }
                 }
-                catch
+                catch (Exception parseEx)
                 {
-                    // 忽略解析错误
+                    Console.WriteLine($"⚠️ 无法解析错误响应: {parseEx.Message}");
                 }
                 
                 return false;
@@ -737,9 +855,11 @@ public class BinanceService : IBinanceService, IDisposable
             // 检查API凭据
             if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
             {
-                Console.WriteLine($"设置杠杆(模拟): {symbol} {leverage}x");
+                Console.WriteLine($"⚠️ API凭据未设置，跳过杠杆设置(模拟): {symbol} {leverage}x");
                 return true;
             }
+
+            Console.WriteLine($"🔧 开始设置杠杆: {symbol} → {leverage}x");
 
             // 构建设置杠杆请求
             var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
@@ -758,6 +878,9 @@ public class BinanceService : IBinanceService, IDisposable
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
 
+            Console.WriteLine($"📤 发送杠杆设置请求: {endpoint}");
+            Console.WriteLine($"📝 请求参数: symbol={symbol}, leverage={leverage}");
+
             var content = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("symbol", symbol),
@@ -772,19 +895,74 @@ public class BinanceService : IBinanceService, IDisposable
             {
                 var responseBody = await response.Content.ReadAsStringAsync();
                 Console.WriteLine($"✅ 设置杠杆成功: {symbol} {leverage}x");
-                Console.WriteLine($"响应: {responseBody}");
+                Console.WriteLine($"📥 API响应: {responseBody}");
+                
+                // 等待设置生效
+                await Task.Delay(500);
                 return true;
             }
             else
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"❌ 设置杠杆失败: {response.StatusCode} - {errorBody}");
+                Console.WriteLine($"❌ 设置杠杆失败: {response.StatusCode}");
+                Console.WriteLine($"📥 错误响应: {errorBody}");
+                
+                // 检查是否是已经设置的错误（这通常不算失败）
+                if (errorBody.Contains("No need to change leverage"))
+                {
+                    Console.WriteLine($"ℹ️ 杠杆已经是 {leverage}x，无需更改");
+                    return true;
+                }
+                
+                // 解析具体的错误信息
+                try
+                {
+                    using (var doc = JsonDocument.Parse(errorBody))
+                    {
+                        if (doc.RootElement.TryGetProperty("code", out var codeElement))
+                        {
+                            var errorCode = codeElement.GetInt32();
+                            Console.WriteLine($"🚨 杠杆设置错误代码: {errorCode}");
+                            
+                            switch (errorCode)
+                            {
+                                case -4028:
+                                    Console.WriteLine($"💡 错误: 杠杆值无效或不支持");
+                                    break;
+                                case -4046:
+                                    Console.WriteLine($"💡 错误: 杠杆无需更改");
+                                    return true; // 这种情况下算成功
+                                case -1015:
+                                    Console.WriteLine($"💡 错误: 太多新订单，请降低下单频率");
+                                    break;
+                                case -2013:
+                                    Console.WriteLine($"💡 错误: 订单不存在");
+                                    break;
+                                default:
+                                    Console.WriteLine($"💡 未知杠杆错误代码: {errorCode}");
+                                    break;
+                            }
+                        }
+                        
+                        if (doc.RootElement.TryGetProperty("msg", out var msgElement))
+                        {
+                            var errorMsg = msgElement.GetString();
+                            Console.WriteLine($"🚨 杠杆设置错误信息: {errorMsg}");
+                        }
+                    }
+                }
+                catch (Exception parseEx)
+                {
+                    Console.WriteLine($"⚠️ 无法解析杠杆错误响应: {parseEx.Message}");
+                }
+                
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ 设置杠杆异常: {ex.Message}");
+            Console.WriteLine($"❌ 设置杠杆异常: {symbol} {leverage}x - {ex.Message}");
+            Console.WriteLine($"🔍 异常详情: {ex}");
             return false;
         }
     }
@@ -796,9 +974,11 @@ public class BinanceService : IBinanceService, IDisposable
             // 检查API凭据
             if (string.IsNullOrEmpty(_apiKey) || string.IsNullOrEmpty(_secretKey))
             {
-                Console.WriteLine($"设置保证金模式(模拟): {symbol} {marginType}");
+                Console.WriteLine($"⚠️ API凭据未设置，跳过保证金模式设置(模拟): {symbol} {marginType}");
                 return true;
             }
+
+            Console.WriteLine($"🔧 开始设置保证金模式: {symbol} → {marginType}");
 
             // 构建设置保证金模式请求
             var baseUrl = _isTestNet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
@@ -817,6 +997,9 @@ public class BinanceService : IBinanceService, IDisposable
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", _apiKey);
 
+            Console.WriteLine($"📤 发送保证金模式设置请求: {endpoint}");
+            Console.WriteLine($"📝 请求参数: symbol={symbol}, marginType={marginType}");
+
             var content = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("symbol", symbol),
@@ -831,19 +1014,32 @@ public class BinanceService : IBinanceService, IDisposable
             {
                 var responseBody = await response.Content.ReadAsStringAsync();
                 Console.WriteLine($"✅ 设置保证金模式成功: {symbol} {marginType}");
-                Console.WriteLine($"响应: {responseBody}");
+                Console.WriteLine($"📥 API响应: {responseBody}");
+                
+                // 等待设置生效
+                await Task.Delay(500);
                 return true;
             }
             else
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"❌ 设置保证金模式失败: {response.StatusCode} - {errorBody}");
+                Console.WriteLine($"❌ 设置保证金模式失败: {response.StatusCode}");
+                Console.WriteLine($"📥 错误响应: {errorBody}");
+                
+                // 检查是否是已经设置的错误（这通常不算失败）
+                if (errorBody.Contains("No need to change margin type") || errorBody.Contains("-4046"))
+                {
+                    Console.WriteLine($"ℹ️ 保证金模式已经是 {marginType}，无需更改");
+                    return true;
+                }
+                
                 return false;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ 设置保证金模式异常: {ex.Message}");
+            Console.WriteLine($"❌ 设置保证金模式异常: {symbol} {marginType} - {ex.Message}");
+            Console.WriteLine($"🔍 异常详情: {ex}");
             return false;
         }
     }
@@ -1018,6 +1214,7 @@ public class BinanceService : IBinanceService, IDisposable
                 UnRealizedProfit = 100m,
                 LiquidationPrice = 45000m,
                 Leverage = 10,
+                MarginType = "ISOLATED",
                 Notional = 5100m,
                 OrderCount = 2,
                 ConditionalOrderCount = 1
@@ -1032,6 +1229,7 @@ public class BinanceService : IBinanceService, IDisposable
                 UnRealizedProfit = 50m,
                 LiquidationPrice = 3500m,
                 Leverage = 5,
+                MarginType = "CROSS",
                 Notional = 1450m,
                 OrderCount = 1,
                 ConditionalOrderCount = 0
@@ -1057,6 +1255,7 @@ public class BinanceService : IBinanceService, IDisposable
                     MarkPrice = decimal.Parse(element.GetProperty("markPrice").GetString() ?? "0"),
                     UnRealizedProfit = decimal.Parse(element.GetProperty("unRealizedProfit").GetString() ?? "0"),
                     Leverage = decimal.Parse(element.GetProperty("leverage").GetString() ?? "1"),
+                    MarginType = element.GetProperty("marginType").GetString() ?? "ISOLATED",
                     Notional = decimal.Parse(element.GetProperty("notional").GetString() ?? "0")
                 };
                 
@@ -1149,6 +1348,20 @@ public class BinanceService : IBinanceService, IDisposable
                 symbolInfo.MaxPrice = 100000m;
                 symbolInfo.TickSize = 0.0001m;
                 symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+            }
+            else if (upperSymbol.Contains("SOMI"))
+            {
+                // SOMI类币种精度设置
+                symbolInfo.PricePrecision = 5;      // 价格精度：0.00001
+                symbolInfo.QuantityPrecision = 0;   // 数量精度：1 (整数)
+                symbolInfo.MinQty = 1m;             // 最小数量：1
+                symbolInfo.MaxQty = 1000000m;
+                symbolInfo.StepSize = 1m;           // 步长：1
+                symbolInfo.MinPrice = 0.00001m;
+                symbolInfo.MaxPrice = 100m;
+                symbolInfo.TickSize = 0.00001m;
+                symbolInfo.MinNotional = 5.0m;      // 最小金额：5 USDT
+                Console.WriteLine($"🪙 SOMI币种精度设置: {symbol} - 数量整数, 价格5位小数");
             }
             else
             {
